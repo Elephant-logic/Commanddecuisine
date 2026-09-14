@@ -1,9 +1,3 @@
-databases:
-  - name: command-de-cuisine-db
-    plan: 0.1c-256mb
-    databaseName: command_de_cuisine
-    user: command_de_cuisine
-
 services:
   - type: web
     name: command-de-cuisine
@@ -18,9 +12,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.13.5
       - key: DATABASE_URL
-        fromDatabase:
-          name: command-de-cuisine-db
-          property: connectionString
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: OPENAI_API_KEY
