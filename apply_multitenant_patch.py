@@ -47,6 +47,13 @@ new_week = 'const weekData=weekCompliance(); const hasWeekData=weekData.some(x=>
 if old_week not in text:
     raise SystemExit('Weekly compliance report marker not found in index.html')
 text = text.replace(old_week, new_week, 1)
+
+old_home_kpi = 'kpis.append(kpi("Compliance today",comp+"%",comp>=95?"On track":"Attention",comp>=95?"up":"down","reports","ok"));'
+new_home_kpi = 'const hasComplianceActivity=STATE.tempReadings.some(r=>r.ts&&r.ts.slice(0,10)===todayISO())||Object.values(STATE.dailyChecks[todayISO()]||{}).some(x=>x&&x.done)||STATE.calibrations.some(x=>x.ts&&x.ts.slice(0,10)===todayISO())||STATE.cleaningTasks.some(x=>x.lastDone&&String(x.lastDone).slice(0,10)===todayISO())||STATE.fryerLogs.some(x=>x.ts&&x.ts.slice(0,10)===todayISO()); kpis.append(kpi("Compliance today",hasComplianceActivity?comp+"%":"—",hasComplianceActivity?(comp>=95?"On track":"Attention"):"No data yet",hasComplianceActivity?(comp>=95?"up":"down"):"","reports","ok"));'
+if old_home_kpi not in text:
+    raise SystemExit('Home compliance KPI marker not found in index.html')
+text = text.replace(old_home_kpi, new_home_kpi, 1)
+
 index.write_text(text, encoding='utf-8')
 
 fixes = app_dir / 'kitchen_fixes_20260810.js'
