@@ -1,0 +1,50 @@
+name: Unpack production build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Command-de-Cuisine-clean-production.zip'
+      - '.github/workflows/unpack-production.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Unpack clean production build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP='Command-de-Cuisine-clean-production.zip'
+          if [ ! -f "$ZIP" ]; then
+            echo 'ZIP already unpacked; nothing to do.'
+            exit 0
+          fi
+          rm -rf _release_unpack
+          mkdir _release_unpack
+          unzip -q "$ZIP" -d _release_unpack
+          SRC='_release_unpack/Command-de-Cuisine-clean'
+          test -f "$SRC/render.yaml"
+          test -f "$SRC/server.py"
+          test -f "$SRC/requirements.txt"
+          rsync -a --exclude '.git' "$SRC/" ./
+          rm -rf _release_unpack "$ZIP"
+      - name: Commit unpacked production files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet && git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Unpack Command de Cuisine production build [skip ci]'
+          git push
