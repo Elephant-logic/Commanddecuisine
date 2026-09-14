@@ -24,6 +24,18 @@ if old_events not in text:
     raise SystemExit('Login event marker not found in index.html')
 text = text.replace(old_events, new_events, 1)
 
+old_reports_head = '  const comp=complianceToday();\n  const breaches=STATE.tempReadings.filter(r=>{const a=appById(r.appId);return a&&tempStatus(a,r.value)==="danger";}).sort((a,b)=>b.ts.localeCompare(a.ts));'
+new_reports_head = '  const reportTemps=STATE.tempReadings.filter(r=>String(r.ts||"").slice(0,10)===todayISO());\n  const reportTempOk=reportTemps.filter(r=>{const a=appById(r.appId);return a&&tempStatus(a,r.value)!=="danger";}).length;\n  const comp=reportTemps.length?Math.round(reportTempOk/reportTemps.length*100):0;\n  const breaches=STATE.tempReadings.filter(r=>{const a=appById(r.appId);return a&&tempStatus(a,r.value)==="danger";}).sort((a,b)=>b.ts.localeCompare(a.ts));'
+if old_reports_head not in text:
+    raise SystemExit('Cold chain report metric marker not found in index.html')
+text = text.replace(old_reports_head, new_reports_head, 1)
+
+old_cold_chain = '  d1.insertAdjacentHTML("beforeend",donut(comp,comp>=95?"var(--ok)":comp>=80?"var(--warn)":"var(--danger)","In range"));'
+new_cold_chain = '  if(reportTemps.length)d1.insertAdjacentHTML("beforeend",donut(comp,comp>=95?"var(--ok)":comp>=80?"var(--warn)":"var(--danger)","In range")); else d1.append(el("div",{class:"empty",html:icon("temp")+"<h4>No temperature data yet</h4><div>Cold-chain percentages will appear after this venue records temperatures.</div>"}));'
+if old_cold_chain not in text:
+    raise SystemExit('Cold chain report display marker not found in index.html')
+text = text.replace(old_cold_chain, new_cold_chain, 1)
+
 old_delivery = 'd3.insertAdjacentHTML("beforeend",donut(STATE.deliveries.length?acc/STATE.deliveries.length*100:100,"var(--cold)","Accepted"));'
 new_delivery = 'd3.insertAdjacentHTML("beforeend",donut(STATE.deliveries.length?acc/STATE.deliveries.length*100:0,STATE.deliveries.length?"var(--cold)":"var(--faint)",STATE.deliveries.length?"Accepted":"No records"));'
 if old_delivery not in text:
