@@ -23,4 +23,25 @@ new_events = '$("#lbtn").addEventListener("click",go);\n  $("#lp").addEventListe
 if old_events not in text:
     raise SystemExit('Login event marker not found in index.html')
 text = text.replace(old_events, new_events, 1)
+
+old_delivery = 'd3.insertAdjacentHTML("beforeend",donut(STATE.deliveries.length?acc/STATE.deliveries.length*100:100,"var(--cold)","Accepted"));'
+new_delivery = 'd3.insertAdjacentHTML("beforeend",donut(STATE.deliveries.length?acc/STATE.deliveries.length*100:0,STATE.deliveries.length?"var(--cold)":"var(--faint)",STATE.deliveries.length?"Accepted":"No records"));'
+if old_delivery not in text:
+    raise SystemExit('Delivery report marker not found in index.html')
+text = text.replace(old_delivery, new_delivery, 1)
+
+old_week = 'wk.insertAdjacentHTML("beforeend",bars(weekCompliance())); v.append(wk);'
+new_week = 'const weekData=weekCompliance(); const hasWeekData=weekData.some(x=>x&&x.hasData!==false&&x.value>0)||STATE.tempReadings.some(r=>{const t=new Date(r.ts).getTime();return Number.isFinite(t)&&t>=Date.now()-7*864e5;}); if(hasWeekData)wk.insertAdjacentHTML("beforeend",bars(weekData)); else wk.append(el("div",{class:"empty",html:icon("history")+"<h4>No compliance history yet</h4><div>Percentages will appear after this venue starts recording its required checks.</div>"})); v.append(wk);'
+if old_week not in text:
+    raise SystemExit('Weekly compliance report marker not found in index.html')
+text = text.replace(old_week, new_week, 1)
 index.write_text(text, encoding='utf-8')
+
+fixes = app_dir / 'kitchen_fixes_20260810.js'
+js = fixes.read_text(encoding='utf-8')
+old_pct = "const pct=expected?Math.round(good/expected*100):100;\n      out.push({label:dayName(day),value:pct,color:pct>=95?'var(--ok)':pct>=80?'var(--warn)':'var(--danger)'});"
+new_pct = "const hasData=expected>0;\n      const pct=hasData?Math.round(good/expected*100):0;\n      out.push({label:dayName(day),value:pct,hasData,color:hasData?(pct>=95?'var(--ok)':pct>=80?'var(--warn)':'var(--danger)'):'var(--faint)'});"
+if old_pct not in js:
+    raise SystemExit('Weekly compliance empty-state marker not found in kitchen fixes')
+js = js.replace(old_pct, new_pct, 1)
+fixes.write_text(js, encoding='utf-8')
