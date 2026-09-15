@@ -32,7 +32,7 @@ print('Rota split shifts enabled with optional second start/end and combined hou
 
 # Temporary build diagnostic: identify what the visible charts are actually fed from.
 print('=== GRAPH SOURCE DIAGNOSTIC ===')
-for needle in ['COMPLIANCE — LAST 7 DAYS','Compliance — last 7 days','bars(','donut(','lineChart(']:
+for needle in ['function weekCompliance','function checksProgress','function readingSeries','COMPLIANCE — LAST 7 DAYS','Compliance — last 7 days','bars(','donut(','lineChart(']:
     start=0
     shown=0
     while shown<10:
@@ -43,7 +43,7 @@ for needle in ['COMPLIANCE — LAST 7 DAYS','Compliance — last 7 days','bars('
             start=i+len(needle)
             continue
         print(f'--- {needle} @ {i} ---')
-        print(text[max(0,i-700):min(len(text),i+1500)])
+        print(text[max(0,i-900):min(len(text),i+2200)])
         print('--- END ---')
         shown+=1
         start=i+len(needle)
