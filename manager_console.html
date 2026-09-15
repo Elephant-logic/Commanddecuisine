@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<title>Command de Cuisine — Manager Console</title>
+<style>
+:root{color-scheme:dark;--bg:#111419;--card:#1c2229;--line:#35404b;--text:#f4f5f7;--muted:#9ca6b3;--gold:#e4ad37;--danger:#ff8b8b;--ok:#55c98b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:18px 14px 96px}.wrap{max-width:760px;margin:auto}h1{font-size:24px;margin:0 0 4px}.sub{color:var(--muted);margin:0 0 16px}.status{padding:10px 12px;border:1px solid var(--line);border-radius:12px;margin:10px 0;background:#171c22}.ok{color:var(--ok)}.bad{color:var(--danger)}.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:10}.tabs button,.topbtn{border:1px solid var(--line);background:#20262e;color:var(--text);border-radius:11px;padding:11px 8px;font-weight:800}.tabs button.active{background:var(--gold);color:#17191d;border-color:var(--gold)}.panel{margin-top:10px}.row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px;margin:9px 0}.row small{display:block;color:var(--muted);margin-top:4px}.actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.btn{border:1px solid #4b5866;background:#29313a;color:#fff;border-radius:10px;padding:9px 11px;font-weight:800}.btn.edit{color:#f4d27b}.btn.remove{color:var(--danger);border-color:#814646}.btn:disabled{opacity:.45}.footer{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.topbtn{background:var(--gold);color:#17191d;border-color:var(--gold);text-decoration:none;display:inline-block}.mutedbtn{background:#20262e;color:var(--text);border:1px solid var(--line);text-decoration:none}.empty{padding:20px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:14px}.modal{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:flex-end;justify-content:center;padding:10px;z-index:999}.sheet{width:min(700px,100%);max-height:90vh;overflow:auto;background:#181d23;border:1px solid var(--line);border-radius:18px 18px 8px 8px;padding:16px}.sheet h2{margin:0 0 14px}.form{display:grid;gap:12px}.form label{display:grid;gap:6px;font-weight:700}.form input,.form select{width:100%;padding:11px;border-radius:10px;border:1px solid #46515e;background:#0f1318;color:#fff;font:inherit}.form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}@media(max-width:560px){.row{grid-template-columns:1fr}.actions{justify-content:flex-start}.tabs{grid-template-columns:1fr 1fr 1fr}.tabs button{font-size:13px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Manager Console</h1>
+  <p class="sub">Edit or remove active setup items. Historic completed records are kept.</p>
+  <div id="status" class="status">Loading live venue data…</div>
+  <div class="tabs" id="tabs" hidden>
+    <button data-tab="cleaning" class="active">Cleaning</button>
+    <button data-tab="checks">Daily checks</button>
+    <button data-tab="staff">Staff</button>
+  </div>
+  <div id="panel" class="panel"></div>
+  <div class="footer" id="footer" hidden>
+    <a class="topbtn" href="/?cdc_fresh=20260915-1">Return to app</a>
+    <button class="topbtn mutedbtn" id="refreshBtn">Reload live data</button>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+let session=null, state=null, revision=0, tab='cleaning';
+const $=s=>document.querySelector(s), status=$('#status'), panel=$('#panel'), tabs=$('#tabs'), footer=$('#footer');
+function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function setStatus(t,bad){status.textContent=t;status.className='status '+(bad?'bad':'ok')}
+async function clearOldAppCaches(){
+  try{if('serviceWorker' in navigator){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()));}}catch(e){}
+  try{if(window.caches){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}}catch(e){}
+}
+async function load(){
+  setStatus('Loading live venue data…',false);
+  const r=await fetch('/api/session?manager_console='+Date.now(),{credentials:'same-origin',cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+  const d=await r.json();
+  if(!r.ok||!d.authenticated){setStatus('Sign in to Command de Cuisine first, then open this Manager Console again.',true);return;}
+  const role=String(d.user&&d.user.role||'').toLowerCase();
+  if(!['manager','admin','administrator'].includes(role)){setStatus('Manager/Admin access is required.',true);return;}
+  session=d;state=d.state;revision=Number(d.revision||0);
+  setStatus('Live venue loaded — '+(d.user.name||d.user.username)+' ('+(d.user.jobTitle||'Manager')+').',false);
+  tabs.hidden=false;footer.hidden=false;render();
+  clearOldAppCaches();
+}
+function schedules(){return state&&Array.isArray(state.cleaningSchedules)?state.cleaningSchedules:[]}
+function tasks(){return state&&Array.isArray(state.cleaningTasks)?state.cleaningTasks:[]}
+function checks(){return state&&Array.isArray(state.checks)?state.checks:[]}
+function users(){return state&&Array.isArray(state.users)?state.users:[]}
+function matchTask(s){return tasks().find(t=>t&&String(t.area||'')===String(s.area||'')&&String(t.task||'')===String(s.task||''))||null}
+function render(){
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  if(tab==='cleaning') renderCleaning(); else if(tab==='checks') renderChecks(); else renderStaff();
+}
+function renderCleaning(){const a=schedules();panel.innerHTML=a.length?a.map((s,i)=>`<div class="row"><div><b>${esc(s.task||'Cleaning task')}</b><small>${esc(s.area||'')}${s.frequency||s.freq?' · '+esc(s.frequency||s.freq):''}</small></div><div class="actions"><button class="btn edit" data-ce="${i}">Edit</button><button class="btn remove" data-cr="${i}">Remove</button></div></div>`).join(''):'<div class="empty">No active cleaning tasks.</div>'; panel.querySelectorAll('[data-ce]').forEach(b=>b.onclick=()=>editCleaning(+b.dataset.ce));panel.querySelectorAll('[data-cr]').forEach(b=>b.onclick=()=>removeCleaning(+b.dataset.cr));}
+function renderChecks(){const a=checks();panel.innerHTML=a.length?a.map((c,i)=>`<div class="row"><div><b>${esc(c.name||'Check')}</b><small>${String(c.period||'').toLowerCase()==='close'?'Closing':'Opening'}</small></div><div class="actions"><button class="btn edit" data-de="${i}">Edit</button><button class="btn remove" data-dr="${i}">Remove</button></div></div>`).join(''):'<div class="empty">No active daily checks.</div>';panel.querySelectorAll('[data-de]').forEach(b=>b.onclick=()=>editCheck(+b.dataset.de));panel.querySelectorAll('[data-dr]').forEach(b=>b.onclick=()=>removeCheck(+b.dataset.dr));}
+function renderStaff(){const me=String(session.user.username||'').toLowerCase();const a=users();panel.innerHTML=a.length?a.map((u,i)=>{const self=String(u.username||'').toLowerCase()===me;return `<div class="row"><div><b>${esc(u.name||u.username)}</b><small>@${esc(u.username||'')} · ${esc(u.role||'staff')}${u.jobTitle?' · '+esc(u.jobTitle):''}</small></div><div class="actions"><button class="btn edit" data-se="${i}">Edit</button><button class="btn remove" data-sr="${i}" ${self?'disabled':''}>${self?'Signed in':'Remove'}</button></div></div>`}).join(''):'<div class="empty">No staff accounts.</div>';panel.querySelectorAll('[data-se]').forEach(b=>b.onclick=()=>editStaff(+b.dataset.se));panel.querySelectorAll('[data-sr]:not([disabled])').forEach(b=>b.onclick=()=>removeStaff(+b.dataset.sr));}
+async function saveState(reason){setStatus('Saving…',false);const r=await fetch('/api/state',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json','Cache-Control':'no-cache'},body:JSON.stringify({state,revision,reason})});const d=await r.json();if(!r.ok){if(r.status===409){await load();throw new Error('Another change was saved first. Live data has been reloaded.');}throw new Error(d.error||'Save failed');}revision=Number(d.revision||revision+1);setStatus('Saved to live production records.',false);}
+function modal(title,html,onSubmit){const m=document.createElement('div');m.className='modal';m.innerHTML=`<div class="sheet"><h2>${esc(title)}</h2>${html}</div>`;document.body.appendChild(m);m.addEventListener('click',e=>{if(e.target===m)m.remove()});const c=m.querySelector('[data-cancel]');if(c)c.onclick=()=>m.remove();const f=m.querySelector('form');if(f)f.onsubmit=async e=>{e.preventDefault();try{await onSubmit(new FormData(f));m.remove();render();}catch(err){alert(err.message||err)}};return m;}
+function editCleaning(i){const s=schedules()[i];if(!s)return;const f=String(s.frequency||s.freq||'Daily').toLowerCase();modal('Edit cleaning task',`<form class="form"><label>Task<input name="task" required value="${esc(s.task||'')}"></label><label>Area / equipment<input name="area" required value="${esc(s.area||'')}"></label><label>Frequency<select name="frequency"><option ${f==='daily'?'selected':''}>Daily</option><option ${f==='weekly'?'selected':''}>Weekly</option><option ${f==='monthly'?'selected':''}>Monthly</option></select></label><div class="form-actions"><button type="button" class="btn" data-cancel>Cancel</button><button class="btn edit">Save</button></div></form>`,async fd=>{const old={task:s.task,area:s.area,frequency:s.frequency,freq:s.freq},t=matchTask(s),oldt=t?{task:t.task,area:t.area,frequency:t.frequency,freq:t.freq}:null;s.task=String(fd.get('task')||'').trim();s.area=String(fd.get('area')||'').trim();s.frequency=String(fd.get('frequency')||'Daily');if('freq' in s)s.freq=s.frequency.toLowerCase();if(t){t.task=s.task;t.area=s.area;t.freq=s.frequency.toLowerCase();if('frequency' in t)t.frequency=s.frequency}try{await saveState('manager console edit cleaning task')}catch(e){Object.assign(s,old);if(t&&oldt)Object.assign(t,oldt);throw e}})}
+async function removeCleaning(i){const a=schedules(),s=a[i];if(!s||!confirm('Remove “'+(s.task||'this task')+'” from the active schedule? Historic completed records will remain.'))return;const bs=JSON.parse(JSON.stringify(a)),bt=JSON.parse(JSON.stringify(tasks())),t=matchTask(s),ti=t?tasks().indexOf(t):-1;state.cleaningSchedules=a.filter((_,x)=>x!==i);if(ti>=0)state.cleaningTasks=bt.filter((_,x)=>x!==ti);try{await saveState('manager console remove cleaning task');render()}catch(e){state.cleaningSchedules=bs;state.cleaningTasks=bt;alert(e.message)}}
+function editCheck(i){const c=checks()[i];if(!c)return;const close=String(c.period||'').toLowerCase()==='close';modal('Edit daily check',`<form class="form"><label>Check name<input name="name" required value="${esc(c.name||'')}"></label><label>When<select name="period"><option value="open" ${!close?'selected':''}>Opening</option><option value="close" ${close?'selected':''}>Closing</option></select></label><div class="form-actions"><button type="button" class="btn" data-cancel>Cancel</button><button class="btn edit">Save</button></div></form>`,async fd=>{const old={name:c.name,period:c.period};c.name=String(fd.get('name')||'').trim();c.period=String(fd.get('period')||'open');try{await saveState('manager console edit daily check')}catch(e){Object.assign(c,old);throw e}})}
+async function removeCheck(i){const a=checks(),c=a[i];if(!c||!confirm('Remove “'+(c.name||'this check')+'” from the active Daily Checks list? Historic completed records will remain.'))return;const before=JSON.parse(JSON.stringify(a));state.checks=a.filter((_,x)=>x!==i);try{await saveState('manager console remove daily check');render()}catch(e){state.checks=before;alert(e.message)}}
+function editStaff(i){const u=users()[i];if(!u)return;modal('Edit staff account',`<form class="form"><label>Name<input name="name" required value="${esc(u.name||'')}"></label><label>Job title<input name="jobTitle" value="${esc(u.jobTitle||'')}"></label><label>Role<select name="role"><option value="staff" ${u.role!=='manager'?'selected':''}>Staff</option><option value="manager" ${u.role==='manager'?'selected':''}>Manager / Admin</option></select></label><div class="form-actions"><button type="button" class="btn" data-cancel>Cancel</button><button class="btn edit">Save</button></div></form>`,async fd=>{const r=await fetch('/api/staff/manage',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u.username,name:String(fd.get('name')||'').trim(),jobTitle:String(fd.get('jobTitle')||'').trim(),role:String(fd.get('role')||'staff')})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not update staff');state=d.state;revision=Number(d.revision||revision);setStatus('Staff account updated.',false)})}
+async function removeStaff(i){const u=users()[i];if(!u||!confirm('Remove '+(u.name||u.username)+' from this venue? Historic records remain.'))return;const r=await fetch('/api/staff/manage',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u.username,delete:true})});const d=await r.json();if(!r.ok){alert(d.error||'Could not remove staff');return}state=d.state;revision=Number(d.revision||revision);setStatus('Staff account removed.',false);render()}
+tabs.addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;tab=b.dataset.tab;render()});$('#refreshBtn').onclick=load;
+load().catch(e=>setStatus(e.message||'Could not load manager console',true));
+})();
+</script>
+</body>
+</html>
