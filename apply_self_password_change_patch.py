@@ -50,7 +50,7 @@ server.write_text(server_text, encoding='utf-8')
 # Load after manager/team UI patches so the account buttons survive DOM/script cleanup.
 index = app / 'index.html'
 html = index.read_text(encoding='utf-8')
-tag = '<script src="/self_password_change.js?v=20260915-account3"></script>'
+tag = '<script src="/self_password_change.js?v=20260915-account4"></script>'
 html = re.sub(r'\s*<script[^>]+src=["\']/?self_password_change\.js(?:\?[^"\']*)?["\'][^>]*></script>\s*', '\n', html, flags=re.I)
 if '</body>' not in html:
     raise SystemExit('Could not locate </body> in index.html')
