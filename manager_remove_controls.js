@@ -1,9 +1,8 @@
 /* Manager-only removal controls.
-   Staff accounts can be removed without deleting historical audit/record attribution.
-   Cleaning task/schedule setup can be removed while historic completion records remain. */
+   Active staff/tasks can be removed while historic records and audit attribution remain. */
 (function () {
   function boot(fn) {
-    if (window.VIEWS && typeof window.VIEWS.settings === 'function' && typeof window.state === 'object') fn();
+    if (window.VIEWS && typeof window.state === 'object') fn();
     else setTimeout(function () { boot(fn); }, 80);
   }
 
@@ -13,8 +12,16 @@
       .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  function currentUser() {
+    try {
+      if (typeof me !== 'undefined' && me) return me;
+    } catch (e) {}
+    return window.me || null;
+  }
+
   function isManager() {
-    return !!(window.me && me.role === 'manager');
+    var u = currentUser();
+    return !!(u && u.role === 'manager');
   }
 
   function labelCleaning(item) {
@@ -25,6 +32,13 @@
     return task + (area ? ' — ' + area : '') + (freq ? ' · ' + freq : '');
   }
 
+  function findTaskForSchedule(s) {
+    var tasks = Array.isArray(state.cleaningTasks) ? state.cleaningTasks : [];
+    return tasks.find(function (t) {
+      return t && String(t.area || '') === String(s.area || '') && String(t.task || '') === String(s.task || '');
+    }) || null;
+  }
+
   function cleaningRows() {
     var schedules = Array.isArray(state.cleaningSchedules) ? state.cleaningSchedules : [];
     var tasks = Array.isArray(state.cleaningTasks) ? state.cleaningTasks : [];
@@ -32,10 +46,7 @@
     var rows = [];
 
     schedules.forEach(function (s) {
-      var match = tasks.find(function (t) {
-        if (!t) return false;
-        return String(t.area || '') === String(s.area || '') && String(t.task || '') === String(s.task || '');
-      });
+      var match = findTaskForSchedule(s);
       if (match && match.id != null) usedTaskIds[String(match.id)] = true;
       var sid = s && s.id != null ? String(s.id) : '';
       var tid = match && match.id != null ? String(match.id) : '';
@@ -57,15 +68,16 @@
 
   function staffRows() {
     var users = Array.isArray(state.users) ? state.users : [];
-    var current = window.me && me.username ? String(me.username).toLowerCase() : '';
-    return users.map(function (u) {
-      var username = String(u.username || '');
+    var u = currentUser();
+    var current = u && u.username ? String(u.username).toLowerCase() : '';
+    return users.map(function (person) {
+      var username = String(person.username || '');
       var self = username.toLowerCase() === current;
-      var role = u.role === 'manager' ? 'Manager' : 'Staff';
+      var role = person.role === 'manager' ? 'Manager' : 'Staff';
       var button = self
         ? '<span class="badge">Signed in</span>'
-        : '<button class="btn sm ghost" onclick="removeStaffAccount(' + JSON.stringify(username) + ',' + JSON.stringify(u.name || username).replace(/</g,'\\u003c') + ')">Remove account</button>';
-      return '<div class="row"><span class="tick ' + (u.active !== false ? 'done' : '') + '"></span><div><b>' + esc(u.name || username) + '</b><br><small>@' + esc(username) + ' · ' + role + (u.active === false ? ' · disabled' : '') + '</small></div><div class="btn-row">' + button + '</div></div>';
+        : '<button class="btn sm ghost" onclick="removeStaffAccount(' + JSON.stringify(username) + ',' + JSON.stringify(person.name || username).replace(/</g,'\\u003c') + ')">Remove account</button>';
+      return '<div class="row"><span class="tick ' + (person.active !== false ? 'done' : '') + '"></span><div><b>' + esc(person.name || username) + '</b><br><small>@' + esc(username) + ' · ' + role + (person.active === false ? ' · disabled' : '') + '</small></div><div class="btn-row">' + button + '</div></div>';
     }).join('') || '<p class="muted">No team members.</p>';
   }
 
@@ -85,13 +97,6 @@
     host.insertAdjacentHTML('afterend', panelHtml());
   }
 
-  function findTaskForSchedule(s) {
-    var tasks = Array.isArray(state.cleaningTasks) ? state.cleaningTasks : [];
-    return tasks.find(function (t) {
-      return t && String(t.area || '') === String(s.area || '') && String(t.task || '') === String(s.task || '');
-    }) || null;
-  }
-
   function findCleaningCard(signoffButton, schedule) {
     var taskText = String(schedule.task || '').trim().toLowerCase();
     var areaText = String(schedule.area || '').trim().toLowerCase();
@@ -101,6 +106,19 @@
       if ((!taskText || text.indexOf(taskText) >= 0) && (!areaText || text.indexOf(areaText) >= 0)) return node;
     }
     return null;
+  }
+
+  function makeRemoveButton(text) {
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn sm ghost manager-remove-inline';
+    remove.textContent = text || 'Remove';
+    remove.style.borderColor = 'rgba(239,83,80,.65)';
+    remove.style.color = 'var(--danger,#ef5350)';
+    remove.style.padding = '7px 11px';
+    remove.style.fontSize = '.82em';
+    remove.style.whiteSpace = 'nowrap';
+    return remove;
   }
 
   function ensureCleaningCardButtons() {
@@ -124,14 +142,9 @@
         var signoff = signoffButtons[i];
         var card = findCleaningCard(signoff, s);
         if (!card) continue;
-        var remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'btn sm ghost manager-remove-inline';
+        var remove = makeRemoveButton('Remove');
         remove.dataset.removeCleaningSchedule = sid;
-        remove.textContent = 'Remove';
-        remove.style.marginLeft = '8px';
-        remove.style.borderColor = 'rgba(239,83,80,.55)';
-        remove.style.color = 'var(--danger,#ef5350)';
+        remove.style.marginLeft = '6px';
         remove.onclick = function (ev) {
           ev.preventDefault();
           ev.stopPropagation();
@@ -143,16 +156,65 @@
     });
   }
 
-  window.removeStaffAccount = async function (username, displayName) {
+  function exactTextElement(label) {
+    var wanted = String(label || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!wanted) return null;
+    var selectors = 'b,strong,h1,h2,h3,h4,h5,p,span,div';
+    var nodes = document.querySelectorAll(selectors);
+    var best = null;
+    var bestLen = 999999;
+    for (var i = 0; i < nodes.length; i++) {
+      var text = String(nodes[i].textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (text !== wanted) continue;
+      var len = String(nodes[i].outerHTML || '').length;
+      if (len < bestLen) { best = nodes[i]; bestLen = len; }
+    }
+    return best;
+  }
+
+  function findDailyCard(titleNode, label) {
+    var wanted = String(label || '').toLowerCase();
+    var node = titleNode;
+    var candidate = titleNode && titleNode.parentElement;
+    for (var i = 0; i < 7 && node; i++, node = node.parentElement) {
+      var text = String(node.innerText || node.textContent || '').toLowerCase();
+      if (text.indexOf(wanted) < 0) continue;
+      if (node.classList && node.classList.contains('row')) return node;
+      if (text.indexOf('done by') >= 0 || text.indexOf('not done') >= 0 || text.indexOf('pending') >= 0) candidate = node;
+    }
+    return candidate;
+  }
+
+  function ensureDailyCheckButtons() {
     if (!isManager()) return;
-    if (!username) return;
+    var checks = Array.isArray(state.checks) ? state.checks : [];
+    checks.forEach(function (check) {
+      var id = check && check.id != null ? String(check.id) : '';
+      var name = String(check && check.name || '').trim();
+      if (!id || !name || document.querySelector('[data-remove-daily-check="' + CSS.escape(id) + '"]')) return;
+      var title = exactTextElement(name);
+      if (!title) return;
+      var card = findDailyCard(title, name);
+      if (!card) return;
+      var remove = makeRemoveButton('Remove');
+      remove.dataset.removeDailyCheck = id;
+      remove.style.marginLeft = 'auto';
+      remove.onclick = function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        window.removeDailyCheckDefinition(id, name);
+      };
+      card.appendChild(remove);
+    });
+  }
+
+  window.removeStaffAccount = async function (username, displayName) {
+    if (!isManager() || !username) return;
     var who = displayName || username;
     if (!window.confirm('Remove ' + who + ' from the team?\n\nTheir login will stop working. Historic records and audit entries will remain.')) return;
     try {
       var response = await fetch('/api/staff/manage', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {'Content-Type': 'application/json'},
+        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({username: username, delete: true})
       });
       var data = await response.json();
@@ -169,7 +231,6 @@
     if (!isManager()) return;
     var label = displayName || 'this cleaning task';
     if (!window.confirm('Remove ' + label + ' from the active cleaning setup?\n\nHistoric completion records will remain in the record history.')) return;
-
     var beforeSchedules = JSON.parse(JSON.stringify(Array.isArray(state.cleaningSchedules) ? state.cleaningSchedules : []));
     var beforeTasks = JSON.parse(JSON.stringify(Array.isArray(state.cleaningTasks) ? state.cleaningTasks : []));
     try {
@@ -179,8 +240,7 @@
       var result = save();
       if (result && typeof result.then === 'function') await result;
       if (typeof toast === 'function') toast('Cleaning task removed', 'ok');
-      if (typeof render === 'function') render();
-      setTimeout(function () { window.location.reload(); }, 650);
+      setTimeout(function () { window.location.reload(); }, 500);
     } catch (err) {
       state.cleaningSchedules = beforeSchedules;
       state.cleaningTasks = beforeTasks;
@@ -189,19 +249,42 @@
     }
   };
 
+  window.removeDailyCheckDefinition = async function (checkId, displayName) {
+    if (!isManager()) return;
+    var label = displayName || 'this daily check';
+    if (!window.confirm('Remove ' + label + ' from the active Daily Checks list?\n\nHistoric completed daily-check records will remain in the record history.')) return;
+    var before = JSON.parse(JSON.stringify(Array.isArray(state.checks) ? state.checks : []));
+    try {
+      state.checks = before.filter(function (x) { return String(x && x.id != null ? x.id : '') !== String(checkId); });
+      if (typeof save !== 'function') throw new Error('Save function is unavailable');
+      var result = save();
+      if (result && typeof result.then === 'function') await result;
+      if (typeof toast === 'function') toast('Daily check removed', 'ok');
+      setTimeout(function () { window.location.reload(); }, 500);
+    } catch (err) {
+      state.checks = before;
+      if (typeof toast === 'function') toast(err.message || 'Could not remove daily check', 'bad');
+      else window.alert(err.message || 'Could not remove daily check');
+    }
+  };
+
+  function ensureAllControls() {
+    ensureCleaningCardButtons();
+    ensureDailyCheckButtons();
+    if (document.getElementById('settingsBody')) ensurePanel();
+  }
+
   boot(function () {
-    var originalSettings = VIEWS.settings;
-    VIEWS.settings = function () {
-      originalSettings.apply(this, arguments);
-      setTimeout(ensurePanel, 0);
-    };
+    if (window.VIEWS && typeof VIEWS.settings === 'function') {
+      var originalSettings = VIEWS.settings;
+      VIEWS.settings = function () {
+        originalSettings.apply(this, arguments);
+        setTimeout(ensurePanel, 0);
+      };
+    }
 
-    setTimeout(ensureCleaningCardButtons, 0);
-    var observer = new MutationObserver(function () {
-      setTimeout(ensureCleaningCardButtons, 0);
-    });
+    setTimeout(ensureAllControls, 0);
+    var observer = new MutationObserver(function () { setTimeout(ensureAllControls, 0); });
     observer.observe(document.body, {childList:true, subtree:true});
-
-    if (window.route === 'settings') setTimeout(ensurePanel, 0);
   });
 })();
