@@ -65,14 +65,41 @@
     }catch(err){alert(err.message||'Could not log out.');if(btn){btn.disabled=false;btn.textContent='Log out';}loggingOut=false;}
   }
   function findOwnRow(){
-    if(!session||!session.user)return null;var u=session.user, username=norm(u.username), name=norm(u.name), edits=[].slice.call(document.querySelectorAll('button')).filter(function(b){return visible(b)&&norm(b.textContent)==='edit';});
-    for(var i=0;i<edits.length;i++){var n=edits[i];for(var j=0;j<6&&n;j++,n=n.parentElement){var t=norm(n.textContent);if((username&&t.indexOf(username)>=0)||(name&&t.indexOf(name)>=0))return {row:n,edit:edits[i]};}}
+    if(!session||!session.user)return null;
+    var username=norm(session.user.username), handle=username?'@'+username:'', name=norm(session.user.name);
+    var edits=[].slice.call(document.querySelectorAll('button')).filter(function(b){return visible(b)&&norm(b.textContent)==='edit';});
+    function oneEditWithin(el){
+      return [ ].slice.call(el.querySelectorAll('button')).filter(function(b){return visible(b)&&norm(b.textContent)==='edit';});
+    }
+    if(handle){
+      for(var i=0;i<edits.length;i++){
+        var n=edits[i];
+        for(var j=0;j<6&&n;j++,n=n.parentElement){
+          var inside=oneEditWithin(n);
+          if(inside.length>1)break;
+          if(inside.length===1&&norm(n.textContent).indexOf(handle)>=0)return {row:n,edit:inside[0]};
+        }
+      }
+    }
+    if(name){
+      for(var k=0;k<edits.length;k++){
+        var p=edits[k];
+        for(var q=0;q<5&&p;q++,p=p.parentElement){
+          var contained=oneEditWithin(p);
+          if(contained.length>1)break;
+          var t=norm(p.textContent);
+          if(contained.length===1&&(t===name||t.indexOf(name+' ')===0||t.indexOf(name+' @')>=0))return {row:p,edit:contained[0]};
+        }
+      }
+    }
     return null;
   }
   function addButtons(){
     if(adding)return;adding=true;
     Promise.resolve(session||getSession()).then(function(){
-      if(!session||!session.user)return;var found=findOwnRow();if(!found)return;ensureStyle();var p=found.edit.parentElement||found.row;
+      if(!session||!session.user)return;var found=findOwnRow();if(!found)return;ensureStyle();
+      ['cdc-self-pw-btn','cdc-self-logout-btn'].forEach(function(id){var old=document.getElementById(id);if(old&&found.row&&!found.row.contains(old))old.remove();});
+      var p=found.edit.parentElement||found.row;
       if(!document.getElementById('cdc-self-pw-btn')){var pw=document.createElement('button');pw.type='button';pw.id='cdc-self-pw-btn';pw.className='cdc-self-account-btn';pw.textContent='Change password';pw.onclick=function(e){e.preventDefault();e.stopPropagation();openDialog();};p.appendChild(pw);}
       if(!document.getElementById('cdc-self-logout-btn')){var lo=document.createElement('button');lo.type='button';lo.id='cdc-self-logout-btn';lo.className='cdc-self-account-btn cdc-self-logout-btn';lo.textContent='Log out';lo.onclick=function(e){e.preventDefault();e.stopPropagation();performLogout(lo);};p.appendChild(lo);}
     }).finally(function(){adding=false;});
