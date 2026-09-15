@@ -213,7 +213,7 @@
     var who = displayName || username;
     if (!window.confirm('Remove ' + who + ' from the team?\n\nTheir login will stop working. Historic records and audit entries will remain.')) return;
     try {
-      var response = await fetch('/api/staff/manage', {
+      var response = await fetch('/api/users/manage', {
         method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({username: username, delete: true})
       });
