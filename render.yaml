@@ -4,7 +4,7 @@ services:
     runtime: python
     region: frankfurt
     plan: 0.5c-512mb
-    buildCommand: rm -rf app _release_unpack && mkdir _release_unpack && unzip -q Command-de-Cuisine-clean-production.zip -d _release_unpack && mv _release_unpack/Command-de-Cuisine-clean app && python apply_supabase_storage_patch.py && python apply_multitenant_patch.py && python apply_temperature_status_patch.py && pip install -r app/requirements.txt
+    buildCommand: rm -rf app _release_unpack && mkdir _release_unpack && unzip -q Command-de-Cuisine-clean-production.zip -d _release_unpack && mv _release_unpack/Command-de-Cuisine-clean app && python apply_supabase_storage_patch.py && python apply_multitenant_patch.py && python apply_temperature_status_patch.py && python apply_allergen_print_patch.py && pip install -r app/requirements.txt
     startCommand: cd app && python server.py
     healthCheckPath: /api/health
     autoDeploy: true
