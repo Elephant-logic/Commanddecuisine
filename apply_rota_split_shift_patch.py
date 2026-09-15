@@ -29,21 +29,3 @@ text=text.replace(old_save,new_save,1)
 
 p.write_text(text,encoding='utf-8')
 print('Rota split shifts enabled with optional second start/end and combined hours')
-
-# Temporary build diagnostic: identify what the visible charts are actually fed from.
-print('=== GRAPH SOURCE DIAGNOSTIC ===')
-for needle in ['function weekCompliance','function checksProgress','function readingSeries','COMPLIANCE — LAST 7 DAYS','Compliance — last 7 days','bars(','donut(','lineChart(']:
-    start=0
-    shown=0
-    while shown<10:
-        i=text.find(needle,start)
-        if i<0: break
-        prefix=text[max(0,i-35):i]
-        if needle in ('bars(','donut(','lineChart(') and ('function '+needle[:-1]) in prefix:
-            start=i+len(needle)
-            continue
-        print(f'--- {needle} @ {i} ---')
-        print(text[max(0,i-900):min(len(text),i+2200)])
-        print('--- END ---')
-        shown+=1
-        start=i+len(needle)
