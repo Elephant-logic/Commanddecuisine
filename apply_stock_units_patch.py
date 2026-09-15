@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 p = Path('app/index.html')
 text = p.read_text(encoding='utf-8')
@@ -11,8 +12,7 @@ text = text.replace('stock:"Inventory & par levels"', 'stock:"Inventory quantiti
 text = text.replace('kpis.append(kpi("Below par",al.stock,al.stock?"Reorder soon":"Stocked","",al.stock?"down":"up","stock"));',
                     'kpis.append(kpi("Low stock",al.stock,al.stock?"Reorder soon":"Stocked","",al.stock?"down":"up","stock"));')
 
-old = 'const STOCK_CATS=["Meat","Frozen","Dairy","Veg","Bakery","Ambient","Drinks","Other"]; let stockView="list", stockSearch="", stockCat="all";'
-new = '''const STOCK_CATS=["Meat","Frozen","Dairy","Veg","Bakery","Ambient","Drinks","Other"];
+new_stock_header = '''const STOCK_CATS=["Meat","Frozen","Dairy","Veg","Bakery","Ambient","Drinks","Other"];
 const STOCK_UNITS=["g","kg","oz","ml","L","each","pack","case","box","tin","bottle","tray","bag","bunch"];
 function stockUnitLabel(unit){const u=String(unit||"each").trim();return u==="ea"?"each":u;}
 function stockUnitStep(unit){const u=stockUnitLabel(unit);return (u==="kg"||u==="L")?0.1:1;}
@@ -27,9 +27,10 @@ function stockShortfallSummary(items){
   return Object.entries(by).filter(([,q])=>q>0).map(([u,q])=>stockQtyText(q,u)).join(" · ")||"Nothing to order";
 }
 let stockView="list", stockSearch="", stockCat="all";'''
-if old not in text:
-    raise SystemExit('STOCK_CATS marker not found')
-text = text.replace(old, new, 1)
+stock_header_pattern = r'const\s+STOCK_CATS\s*=\s*\["Meat","Frozen","Dairy","Veg","Bakery","Ambient","Drinks","Other"\]\s*;\s*let\s+stockView\s*=\s*"list"\s*,\s*stockSearch\s*=\s*""\s*,\s*stockCat\s*=\s*"all"\s*;'
+text, stock_header_count = re.subn(stock_header_pattern, lambda m: new_stock_header, text, count=1)
+if stock_header_count != 1:
+    raise SystemExit(f'STOCK_CATS marker not found or ambiguous: {stock_header_count}')
 
 # Normalise legacy "ea" units and present the stock overview in quantity terms.
 text = text.replace('VIEWS.stock=function(v){   const low=STATE.stock.filter(s=>+s.qty< +s.par);',
