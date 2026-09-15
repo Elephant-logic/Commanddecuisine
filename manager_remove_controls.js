@@ -10,7 +10,7 @@
   function esc(value) {
     return String(value == null ? '' : value)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function isManager() {
@@ -85,6 +85,64 @@
     host.insertAdjacentHTML('afterend', panelHtml());
   }
 
+  function findTaskForSchedule(s) {
+    var tasks = Array.isArray(state.cleaningTasks) ? state.cleaningTasks : [];
+    return tasks.find(function (t) {
+      return t && String(t.area || '') === String(s.area || '') && String(t.task || '') === String(s.task || '');
+    }) || null;
+  }
+
+  function findCleaningCard(signoffButton, schedule) {
+    var taskText = String(schedule.task || '').trim().toLowerCase();
+    var areaText = String(schedule.area || '').trim().toLowerCase();
+    var node = signoffButton;
+    for (var i = 0; i < 7 && node; i++, node = node.parentElement) {
+      var text = String(node.innerText || node.textContent || '').toLowerCase();
+      if ((!taskText || text.indexOf(taskText) >= 0) && (!areaText || text.indexOf(areaText) >= 0)) return node;
+    }
+    return null;
+  }
+
+  function ensureCleaningCardButtons() {
+    if (!isManager()) return;
+    var schedules = Array.isArray(state.cleaningSchedules) ? state.cleaningSchedules : [];
+    if (!schedules.length) return;
+
+    var signoffButtons = Array.prototype.filter.call(document.querySelectorAll('button'), function (b) {
+      return /^sign\s*off$/i.test(String(b.textContent || '').trim());
+    });
+    if (!signoffButtons.length) return;
+
+    schedules.forEach(function (s) {
+      var sid = s && s.id != null ? String(s.id) : '';
+      if (!sid || document.querySelector('[data-remove-cleaning-schedule="' + CSS.escape(sid) + '"]')) return;
+      var task = findTaskForSchedule(s);
+      var tid = task && task.id != null ? String(task.id) : '';
+      var label = labelCleaning(s);
+
+      for (var i = 0; i < signoffButtons.length; i++) {
+        var signoff = signoffButtons[i];
+        var card = findCleaningCard(signoff, s);
+        if (!card) continue;
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn sm ghost manager-remove-inline';
+        remove.dataset.removeCleaningSchedule = sid;
+        remove.textContent = 'Remove';
+        remove.style.marginLeft = '8px';
+        remove.style.borderColor = 'rgba(239,83,80,.55)';
+        remove.style.color = 'var(--danger,#ef5350)';
+        remove.onclick = function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          window.removeCleaningSetup(sid, tid, label);
+        };
+        signoff.insertAdjacentElement('afterend', remove);
+        break;
+      }
+    });
+  }
+
   window.removeStaffAccount = async function (username, displayName) {
     if (!isManager()) return;
     if (!username) return;
@@ -122,7 +180,7 @@
       if (result && typeof result.then === 'function') await result;
       if (typeof toast === 'function') toast('Cleaning task removed', 'ok');
       if (typeof render === 'function') render();
-      setTimeout(function () { window.location.reload(); }, 900);
+      setTimeout(function () { window.location.reload(); }, 650);
     } catch (err) {
       state.cleaningSchedules = beforeSchedules;
       state.cleaningTasks = beforeTasks;
@@ -137,6 +195,13 @@
       originalSettings.apply(this, arguments);
       setTimeout(ensurePanel, 0);
     };
+
+    setTimeout(ensureCleaningCardButtons, 0);
+    var observer = new MutationObserver(function () {
+      setTimeout(ensureCleaningCardButtons, 0);
+    });
+    observer.observe(document.body, {childList:true, subtree:true});
+
     if (window.route === 'settings') setTimeout(ensurePanel, 0);
   });
 })();
