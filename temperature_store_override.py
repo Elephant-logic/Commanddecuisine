@@ -3,6 +3,9 @@ from datetime import datetime
 import app
 
 
+VALID_EQUIPMENT_STATUSES = {'reading', 'out_of_order', 'not_in_use', 'defrosting', 'awaiting_repair'}
+
+
 def _init():
     with app.connect() as conn:
         with conn.cursor() as cur:
@@ -10,7 +13,7 @@ def _init():
                 venue_id TEXT NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
                 id TEXT NOT NULL,
                 app_id TEXT NOT NULL,
-                value DOUBLE PRECISION NOT NULL,
+                value DOUBLE PRECISION,
                 ts TIMESTAMPTZ NOT NULL,
                 period TEXT NOT NULL,
                 recorded_by TEXT NOT NULL,
@@ -18,6 +21,10 @@ def _init():
                 payload JSONB NOT NULL DEFAULT '{}'::jsonb,
                 PRIMARY KEY (venue_id,id)
             )''')
+            # Existing installations originally required a numeric value. Operational
+            # status records (out of order, defrosting, etc.) intentionally have no
+            # temperature, so allow NULL for value.
+            cur.execute('ALTER TABLE tenant_temperature_readings ALTER COLUMN value DROP NOT NULL')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_tenant_temp_venue_ts ON tenant_temperature_readings(venue_id,ts)')
         conn.commit()
 
@@ -25,7 +32,8 @@ def _init():
 def _public_row(row):
     payload=row.get('payload') if isinstance(row.get('payload'),dict) else {}
     out=dict(payload)
-    out.update({'id':row['id'],'appId':row['app_id'],'value':float(row['value']),
+    value=row.get('value')
+    out.update({'id':row['id'],'appId':row['app_id'],'value':float(value) if value is not None else None,
                 'ts':row['ts'].isoformat() if hasattr(row['ts'],'isoformat') else str(row['ts']),
                 'period':row['period'],'by':row['recorded_by'],'source':row['source']})
     return out
@@ -59,13 +67,24 @@ def append_readings(handler,payload):
         except Exception: handler.send_json({'error':'Temperature timestamp is invalid.'},400);return
         period=str(row.get('period') or '').upper().strip()
         if period not in ('AM','PM'): period='AM' if parsed.hour<12 else 'PM'
-        try:value=float(row.get('value'))
-        except Exception:handler.send_json({'error':'Temperature must be numeric.'},400);return
-        if not row_id or app_id not in valid_apps or value < -60 or value > 120:
+        equipment_status=str(row.get('equipmentStatus') or 'reading').strip().lower()
+        if equipment_status not in VALID_EQUIPMENT_STATUSES:
+            handler.send_json({'error':'Equipment status is invalid.'},400);return
+        value=None
+        if equipment_status == 'reading':
+            try:value=float(row.get('value'))
+            except Exception:handler.send_json({'error':'Temperature must be numeric for a reading.'},400);return
+            if value < -60 or value > 120:
+                handler.send_json({'error':'Temperature reading is outside the supported range.'},400);return
+        if not row_id or app_id not in valid_apps:
             handler.send_json({'error':'Temperature reading is incomplete or invalid.'},400);return
-        item=dict(row);item.update({'id':row_id,'appId':app_id,'value':value,'period':period,
+        notes=str(row.get('notes') or '').strip()
+        if equipment_status in ('out_of_order','awaiting_repair') and not notes:
+            handler.send_json({'error':'A fault/action note is required for this equipment status.'},400);return
+        item=dict(row);item.update({'id':row_id,'appId':app_id,'value':value,'equipmentStatus':equipment_status,'period':period,
                                     'by':str(row.get('by') or user.get('username') or '')[:80],
-                                    'source':str(row.get('source') or 'manual')[:80]})
+                                    'source':str(row.get('source') or ('manual' if equipment_status == 'reading' else 'manual-status'))[:80],
+                                    'notes':notes})
         cleaned.append(item)
     inserted=[]; venue_id=user['tenantId']
     with app.connect() as conn:
