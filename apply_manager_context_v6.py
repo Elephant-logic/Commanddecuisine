@@ -29,7 +29,7 @@ html = re.sub(
 html = re.sub(r'\s*<script id=["\']cdc-manager-v5-inline["\']>.*?</script>\s*', '\n', html, flags=re.S|re.I)
 html = re.sub(r'\s*<script[^>]*id=["\']cdc-manager-v[34][^"\']*["\'][^>]*>.*?</script>\s*', '\n', html, flags=re.S|re.I)
 
-tag = '<script src="/manager_context_controls_v6.js?v=20260915-0407"></script>'
+tag = '<script src="/manager_context_controls_v6.js?v=20260915-0412"></script>'
 if '</body>' not in html:
     raise SystemExit('Could not locate </body> in index.html')
 html = html.replace('</body>', tag + '\n</body>', 1)
@@ -76,4 +76,4 @@ if 'cdc-manager-v5-inline' in final_html:
     raise SystemExit('Legacy v5 inline manager UI still present')
 if "'/manager_context_controls_v6.js'" not in server.read_text(encoding='utf-8'):
     raise SystemExit('Manager context route missing')
-print('Manager controls v7 installed: contextual in-app Cleaning/Daily edit-remove sheets; no standalone navigation')
+print('Manager controls v8 installed: Cleaning/Daily add-edit-remove actions save through live state API')
