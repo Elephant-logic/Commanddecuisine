@@ -5,32 +5,33 @@ app = Path('app')
 server = app / 'server.py'
 server_text = server.read_text(encoding='utf-8')
 
-# Discover the existing authenticated password-change endpoint from production.
-idx = server_text.find('change_password')
-if idx < 0:
-    raise SystemExit('Could not find change_password route in server.py')
-window = server_text[max(0, idx - 700): idx + 500]
-routes = re.findall(r"['\"](/api/[^'\"]+)['\"]", window)
-if not routes:
+# Find the actual route-dispatch call, not an import/reference near the top of server.py.
+call_positions = [m.start() for m in re.finditer(r'(?:auth_controls\.)?change_password\s*\(', server_text)]
+if not call_positions:
+    raise SystemExit('Could not find change_password route call in server.py')
+idx = call_positions[-1]
+route_hits = [(m.start(), m.group(1)) for m in re.finditer(r"['\"](/api/[^'\"]+)['\"]", server_text[:idx])]
+if not route_hits:
     raise SystemExit('Could not identify API route for change_password')
-password_route = routes[-1]
+pos, password_route = route_hits[-1]
+if idx - pos > 1200:
+    raise SystemExit('Password route candidate is too far from change_password call')
 
-# Discover the existing logout/sign-out route when present. The client also has safe
-# fallbacks for older bundles where logout is exposed only as a global app function.
+# Discover a logout/sign-out route only when it is genuinely associated with a logout marker.
 logout_route = ''
 low = server_text.lower()
+route_matches = list(re.finditer(r"['\"](/api/[^'\"]+)['\"]", server_text))
 for marker in ('logout', 'signout', 'sign_out', 'log_out'):
-    pos = low.find(marker)
-    if pos >= 0:
-        w = server_text[max(0, pos - 800): pos + 800]
-        candidates = re.findall(r"['\"](/api/[^'\"]+)['\"]", w)
-        preferred = [r for r in candidates if 'logout' in r.lower() or 'sign' in r.lower()]
-        if preferred:
-            logout_route = preferred[-1]
+    for mm in re.finditer(marker, low):
+        before = [r for r in route_matches if r.start() <= mm.start() and mm.start() - r.start() <= 1000]
+        if not before:
+            continue
+        cand = before[-1].group(1)
+        if 'logout' in cand.lower() or 'sign' in cand.lower() or mm.start() - before[-1].start() < 350:
+            logout_route = cand
             break
-        if candidates:
-            logout_route = candidates[-1]
-            break
+    if logout_route:
+        break
 
 src = Path('self_password_change.js')
 js = src.read_text(encoding='utf-8')
@@ -49,7 +50,7 @@ server.write_text(server_text, encoding='utf-8')
 # Load after manager/team UI patches so the account buttons survive DOM/script cleanup.
 index = app / 'index.html'
 html = index.read_text(encoding='utf-8')
-tag = '<script src="/self_password_change.js?v=20260915-account2"></script>'
+tag = '<script src="/self_password_change.js?v=20260915-account3"></script>'
 html = re.sub(r'\s*<script[^>]+src=["\']/?self_password_change\.js(?:\?[^"\']*)?["\'][^>]*></script>\s*', '\n', html, flags=re.I)
 if '</body>' not in html:
     raise SystemExit('Could not locate </body> in index.html')
