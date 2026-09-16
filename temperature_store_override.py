@@ -102,4 +102,22 @@ def append_readings(handler,payload):
         conn.commit()
     handler.send_json({'ok':True,'inserted':len(inserted),'readings':inserted})
 
+
+def delete_reading(handler,payload):
+    stored,user=handler.require_user()
+    if not stored:return
+    row_id=str(payload.get('id') or '').strip() if isinstance(payload,dict) else ''
+    if not row_id:
+        handler.send_json({'error':'Temperature record id is required.'},400);return
+    venue_id=user['tenantId']
+    with app.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM tenant_temperature_readings WHERE venue_id=%s AND id=%s RETURNING id',(venue_id,row_id))
+            deleted=cur.fetchone()
+            cur.execute('INSERT INTO server_audit(username,action,revision,details) VALUES(%s,%s,%s,%s::jsonb)',
+                        (user['username'],'delete_temperature_reading',stored['revision'],json.dumps({'venueId':venue_id,'id':row_id,'deleted':bool(deleted)})))
+        conn.commit()
+    handler.send_json({'ok':True,'deleted':bool(deleted),'id':row_id})
+
+
 _init()
