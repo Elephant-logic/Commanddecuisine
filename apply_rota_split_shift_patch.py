@@ -29,3 +29,20 @@ text=text.replace(old_save,new_save,1)
 
 p.write_text(text,encoding='utf-8')
 print('Rota split shifts enabled with optional second start/end and combined hours')
+
+print('=== TEMP BACKFILL DIAGNOSTIC ===')
+for path in [Path('app/main_app.js'), Path('app/kitchen_fixes_20260810.js')]:
+    if not path.exists():
+        continue
+    src=path.read_text(encoding='utf-8')
+    print('FILE',path)
+    for needle in ['historic temperature backfill','backfill','function readingFor','/api/temperature','temperature-readings','append_temperature','period===','period===']:
+        start=0;shown=0
+        while shown<8:
+            i=src.lower().find(needle.lower(),start)
+            if i<0: break
+            print(f'--- {needle} @ {i} ---')
+            print(src[max(0,i-1800):min(len(src),i+3400)])
+            print('--- END ---')
+            shown+=1
+            start=i+max(1,len(needle))
