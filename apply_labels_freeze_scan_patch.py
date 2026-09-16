@@ -175,11 +175,24 @@ if needle not in text:
     raise SystemExit('Could not locate printed label heading')
 text = text.replace(needle, replacement2, 1)
 
-close_needle = '    </div></body></html>`); w.document.close(); w.focus(); setTimeout(()=>w.print(),300);'
-close_repl = '''    </div>${code?`<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script><script>window.addEventListener("load",function(){try{var el=document.getElementById("cdcBarcode");if(el&&window.JsBarcode){JsBarcode(el,el.getAttribute("data-code"),{format:"CODE128",displayValue:false,height:46,margin:0,width:1.6});}}catch(e){}});</script>`:""}</body></html>`); w.document.close(); w.focus(); setTimeout(()=>w.print(),700);'''
-if close_needle not in text:
-    raise SystemExit('Could not locate label print close sequence')
-text = text.replace(close_needle, close_repl, 1)
+label_start = text.find('function printLabel(name,kind,days,allergens,expiryUnit=')
+if label_start < 0:
+    raise SystemExit('Could not locate patched printLabel function')
+close_idx = text.find('w.document.close();', label_start)
+if close_idx < 0:
+    raise SystemExit('Could not locate label document close')
+html_end = text.rfind('</body></html>', label_start, close_idx)
+if html_end < 0:
+    raise SystemExit('Could not locate label HTML end')
+barcode_script = '${code?`<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script><script>window.addEventListener("load",function(){try{var el=document.getElementById("cdcBarcode");if(el&&window.JsBarcode){JsBarcode(el,el.getAttribute("data-code"),{format:"CODE128",displayValue:false,height:46,margin:0,width:1.6});}}catch(e){}});</script>`:""}'
+text = text[:html_end] + barcode_script + text[html_end:]
+# Give the barcode library a little more time to render before the print dialog.
+label_start = text.find('function printLabel(name,kind,days,allergens,expiryUnit=')
+close_idx = text.find('w.document.close();', label_start)
+print_end = text.find('}', close_idx)
+segment = text[label_start:print_end+1]
+segment = segment.replace('setTimeout(()=>w.print(),300)', 'setTimeout(()=>w.print(),700)', 1)
+text = text[:label_start] + segment + text[print_end+1:]
 
 stock_wrapper = r'''
 /* ---------- STOCK BARCODE / QR LOOKUP ---------- */
