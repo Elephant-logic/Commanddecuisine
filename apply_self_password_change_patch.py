@@ -71,3 +71,49 @@ if '__LOGOUT_ROUTE__' in final_js:
     raise SystemExit('Logout placeholder was not resolved')
 
 print(f'Self account controls restored: password={password_route}, logout={logout_route or "client fallback"}')
+
+# 2026-09-17 safety overlay. This deliberately changes only three browser-side
+# runtime files; auth, Supabase configuration and persisted data are untouched.
+import base64
+import hashlib
+import zlib
+
+overlays = [
+    ('compliance_pro.js', 'cdc_overlay_compliance_pro.js.b64', '7570dac36d6f4d4a2f67dc0c938aa13dcc0f585ba4a96092a8f29957eaf07674'),
+    ('integration_bridge.js', 'cdc_overlay_integration_bridge.js.b64', '7b1e5e71ef08c632c47fb7589610e42acbf88b7886e7702673457a046519ef70'),
+    ('safe_delete_patch.js', 'cdc_overlay_safe_delete_patch.js.b64', '7342d07dd6c9094535a17658b15ce31ce9c571b41f907652c5807d2abfc46f11'),
+]
+
+for target_name, payload_name, expected_sha in overlays:
+    payload_path = Path(payload_name)
+    if not payload_path.exists():
+        raise SystemExit(f'Missing safety overlay payload: {payload_name}')
+    try:
+        raw = zlib.decompress(base64.b64decode(payload_path.read_text(encoding='utf-8').strip()))
+    except Exception as exc:
+        raise SystemExit(f'Could not decode safety overlay {payload_name}: {exc}')
+    got = hashlib.sha256(raw).hexdigest()
+    if got != expected_sha:
+        raise SystemExit(f'Safety overlay checksum mismatch for {target_name}: {got}')
+    target = app / target_name
+    if not target.exists():
+        raise SystemExit(f'Safety overlay target missing: {target}')
+    target.write_bytes(raw)
+    verify = hashlib.sha256(target.read_bytes()).hexdigest()
+    if verify != expected_sha:
+        raise SystemExit(f'Safety overlay write verification failed for {target_name}: {verify}')
+
+# Force browsers/service workers to request the corrected runtime modules.
+runtime_loader = app / 'runtime_loader.js'
+if runtime_loader.exists():
+    rt = runtime_loader.read_text(encoding='utf-8')
+    rt2 = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260917-safety2', rt)
+    runtime_loader.write_text(rt2, encoding='utf-8')
+
+guard = app / 'temperature_reset_guard.js'
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt2 = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260917-safety2', gt)
+    guard.write_text(gt2, encoding='utf-8')
+
+print('Applied 2026-09-17 compliance, stock-link and targeted-delete safety fixes')
