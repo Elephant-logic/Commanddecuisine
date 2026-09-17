@@ -133,3 +133,34 @@ if historic_sha != expected_historic_sha:
     raise SystemExit(f'Historic status patch checksum mismatch: {historic_sha}')
 exec(compile(historic_raw, 'cdc_historic_status_patch.py', 'exec'), {'__name__': '__main__'})
 print('Applied historic temperature/status consistency fixes')
+
+# Chef Pro v2: replace only the browser-side Chef assistant after all earlier
+# build patches. This does not change auth, Supabase configuration or stored data.
+chef_payload = Path('cdc_chef_pro_v2.js.b64')
+if not chef_payload.exists():
+    raise SystemExit('Missing Chef Pro v2 payload: cdc_chef_pro_v2.js.b64')
+try:
+    chef_raw = zlib.decompress(base64.b64decode(chef_payload.read_text(encoding='utf-8').strip()))
+except Exception as exc:
+    raise SystemExit(f'Could not decode Chef Pro v2 payload: {exc}')
+chef_sha = hashlib.sha256(chef_raw).hexdigest()
+expected_chef_sha = '76c89a2251d24ff1f421bfae933b2eaab57d0a43d031754617d75611d20fb0c2'
+if chef_sha != expected_chef_sha:
+    raise SystemExit(f'Chef Pro v2 checksum mismatch: {chef_sha}')
+chef_target = app / 'ai_upgrade_patch.js'
+if not chef_target.exists():
+    raise SystemExit('Chef Pro runtime target missing: app/ai_upgrade_patch.js')
+chef_target.write_bytes(chef_raw)
+if hashlib.sha256(chef_target.read_bytes()).hexdigest() != expected_chef_sha:
+    raise SystemExit('Chef Pro v2 write verification failed')
+
+# Cache-bust the runtime loader so active kitchen devices fetch the new Chef brain.
+if runtime_loader.exists():
+    rt = runtime_loader.read_text(encoding='utf-8')
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260917-chef2', rt)
+    runtime_loader.write_text(rt, encoding='utf-8')
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260917-chef2', gt)
+    guard.write_text(gt, encoding='utf-8')
+print('Applied Chef Pro v2 culinary reasoning and recipe knowledge upgrade')
