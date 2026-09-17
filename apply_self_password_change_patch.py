@@ -117,3 +117,19 @@ if guard.exists():
     guard.write_text(gt2, encoding='utf-8')
 
 print('Applied 2026-09-17 compliance, stock-link and targeted-delete safety fixes')
+
+# 2026-09-17 historic temperature/status consistency overlay. It runs last so
+# earlier build patches cannot reintroduce numeric-only historical workflows.
+historic_payload = Path('cdc_historic_status_patch.py.b64')
+if not historic_payload.exists():
+    raise SystemExit('Missing historic status patch payload: cdc_historic_status_patch.py.b64')
+try:
+    historic_raw = zlib.decompress(base64.b64decode(historic_payload.read_text(encoding='utf-8').strip()))
+except Exception as exc:
+    raise SystemExit(f'Could not decode historic status patch payload: {exc}')
+historic_sha = hashlib.sha256(historic_raw).hexdigest()
+expected_historic_sha = '93af4cafd6da8505b2b8e7cc35e11ed1a1f679d4dfde963a3ed5c3df8b81cc0b'
+if historic_sha != expected_historic_sha:
+    raise SystemExit(f'Historic status patch checksum mismatch: {historic_sha}')
+exec(compile(historic_raw, 'cdc_historic_status_patch.py', 'exec'), {'__name__': '__main__'})
+print('Applied historic temperature/status consistency fixes')
