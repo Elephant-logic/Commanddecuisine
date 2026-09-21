@@ -546,3 +546,69 @@ if srv_check.count("'/operations_upgrade.js'") + srv_check.count('"/operations_u
 if rt_check.count("'operations_upgrade.js'") + rt_check.count('"operations_upgrade.js"') != 1:
     raise SystemExit('Operations upgrade module not installed exactly once')
 print('Applied Operations upgrade: service mode, live costing, supplier specs, recipe versions and yield-aware requirements')
+
+
+# 2026-09-21 Contacts & important numbers.
+# Adds a connected kitchen directory for suppliers, engineers and priority
+# contacts. Data is only created when a user adds/edits a contact.
+contacts_parts = [
+    Path('cdc_contacts.part1'),
+    Path('cdc_contacts.part2'),
+    Path('cdc_contacts.part3'),
+]
+if not all(p.exists() for p in contacts_parts):
+    raise SystemExit('Missing one or more contacts directory payload parts')
+try:
+    contacts_b64 = ''.join(p.read_text(encoding='utf-8').strip() for p in contacts_parts)
+    contacts_b64_sha = hashlib.sha256(contacts_b64.encode('utf-8')).hexdigest()
+    if contacts_b64_sha != '0ef632c97b336214b66355adc7d7b4adfa8fd9380923703fc580af5da58890d1':
+        raise ValueError(f'payload text checksum mismatch: {contacts_b64_sha}')
+    contacts_raw = zlib.decompress(base64.b64decode(contacts_b64))
+except Exception as exc:
+    raise SystemExit(f'Could not decode contacts directory payload: {exc}')
+contacts_sha = hashlib.sha256(contacts_raw).hexdigest()
+expected_contacts_sha = '9f5fef5559e5b390a504ce36b840168e258509be5a75c948f399e2807ad71888'
+if contacts_sha != expected_contacts_sha:
+    raise SystemExit(f'Contacts directory checksum mismatch: {contacts_sha}')
+contacts_target = app / 'contacts_directory.js'
+contacts_target.write_bytes(contacts_raw)
+if hashlib.sha256(contacts_target.read_bytes()).hexdigest() != expected_contacts_sha:
+    raise SystemExit('Contacts directory write verification failed')
+
+# Serve and load the directory last, after Operations and Chef, so it can
+# connect to Service Mode, Stock and Chef contact queries.
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+contacts_route = "    '/contacts_directory.js',\n"
+if contacts_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding contacts directory')
+    srv = srv.replace(runtime_marker, runtime_marker + contacts_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for contacts directory')
+body = m.group(2)
+body = body.replace(",\n    'contacts_directory.js'", "")
+body = body.replace(",\n    \"contacts_directory.js\"", "")
+body = body.replace("'contacts_directory.js',\n", "")
+body = body.replace('"contacts_directory.js",\n', "")
+body = body.rstrip() + ",\n    'contacts_directory.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-contacts1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-contacts1', gt)
+    guard.write_text(gt, encoding='utf-8')
+
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+if srv_check.count("'/contacts_directory.js'") + srv_check.count('"/contacts_directory.js"') != 1:
+    raise SystemExit('Contacts directory runtime route not installed exactly once')
+if rt_check.count("'contacts_directory.js'") + rt_check.count('"contacts_directory.js"') != 1:
+    raise SystemExit('Contacts directory module not installed exactly once')
+print('Applied Contacts directory: suppliers, engineers, priority numbers, Service Mode and Chef lookup')
