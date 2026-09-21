@@ -622,7 +622,7 @@ temp_sign_src = Path('temperature_negative_input.js')
 if not temp_sign_src.exists():
     raise SystemExit('Missing mobile temperature sign control asset')
 temp_sign_raw = temp_sign_src.read_bytes()
-expected_temp_sign_sha = '54b97e59f74a65364f7ead5aa3f5b3c99a39de7b387515972b4dddf774f91639'
+expected_temp_sign_sha = '8ed9e2a548b897f2255350afe8e8b813557166c664896c0b97b7ecd022ba52d0'
 if hashlib.sha256(temp_sign_raw).hexdigest() != expected_temp_sign_sha:
     raise SystemExit('Mobile temperature sign control checksum mismatch')
 temp_sign_target = app / 'temperature_negative_input.js'
