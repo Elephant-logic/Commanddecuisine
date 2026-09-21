@@ -237,7 +237,7 @@ try:
 except Exception as exc:
     raise SystemExit(f'Could not decode Kitchen Tools payload: {exc}')
 tools_sha = hashlib.sha256(tools_raw).hexdigest()
-expected_tools_sha = 'f18e7828c1cf7e557d6ae81e36cc02fadb12b2312ca1bf8e98a1795b8b555b28'
+expected_tools_sha = 'd1e5da8c57fd1a8ef45c0b98478c67338e215ccbc5fdf0873162d1731766b267'
 if tools_sha != expected_tools_sha:
     raise SystemExit(f'Kitchen Tools checksum mismatch: {tools_sha}')
 tools_target = app / 'kitchen_tools.js'
@@ -266,12 +266,12 @@ body = m.group(2)
 if "'kitchen_tools.js'" not in body and '"kitchen_tools.js"' not in body:
     body = body.rstrip() + ",\n    'kitchen_tools.js'"
     rt = rt[:m.start(2)] + body + rt[m.end(2):]
-rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-tools1', rt)
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-historynav1', rt)
 runtime_loader.write_text(rt, encoding='utf-8')
 
 if guard.exists():
     gt = guard.read_text(encoding='utf-8')
-    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-tools1', gt)
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-historynav1', gt)
     guard.write_text(gt, encoding='utf-8')
 
 # Build-time wiring checks.
@@ -282,3 +282,52 @@ if srv_check.count("'/kitchen_tools.js'") + srv_check.count('"/kitchen_tools.js"
 if rt_check.count("'kitchen_tools.js'") + rt_check.count('"kitchen_tools.js"') != 1:
     raise SystemExit('Kitchen Tools module not installed exactly once')
 print('Applied Kitchen Tools: multi-timers, Chef timer commands, converter and portion scaler')
+
+
+# Keep normal History presentation paper-like and neutral. Internal provenance
+# fields/source IDs remain untouched; only user-facing wording is changed.
+history_targets = [
+    app / 'kitchen_fixes_20260810.js',
+    app / 'history_truth_fix.js',
+    app / 'temperature_history_reconcile.js',
+    app / 'manager_ai_temp_backfill.js',
+    app / 'paper_import_undo.js',
+]
+history_replacements = [
+    ('Historic entries are marked as back-filled so the audit trail stays clear.',
+     'Records are shown under the date and round they relate to.'),
+    ('Historic entries are marked as back-filled so the audit trail stays clear',
+     'Records are shown under the date and round they relate to'),
+    ('Manager back-fill', 'Recorded'),
+    ('Manager back-fill status', 'Recorded'),
+    ('manager back-fill', 'temperature record'),
+    ('manager back-fills', 'temperature records'),
+    ('manager historic backfills', 'manually added temperature records'),
+    ('Entered later', ''),
+    ('entered later', ''),
+]
+history_changes = 0
+for hp in history_targets:
+    if not hp.exists():
+        continue
+    ht = hp.read_text(encoding='utf-8')
+    before = ht
+    for old, new in history_replacements:
+        ht = ht.replace(old, new)
+    # Keep the action obvious without using retrospective/audit jargon.
+    ht = ht.replace("html:'Fill in'", "html:'Add record'")
+    ht = ht.replace('html:"Fill in"', 'html:"Add record"')
+    if ht != before:
+        history_changes += 1
+        hp.write_text(ht, encoding='utf-8')
+
+# Final cache-bust after both the navigation and History presentation fix.
+if runtime_loader.exists():
+    rt = runtime_loader.read_text(encoding='utf-8')
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-historynav1', rt)
+    runtime_loader.write_text(rt, encoding='utf-8')
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-historynav1', gt)
+    guard.write_text(gt, encoding='utf-8')
+print(f'History/navigation repair applied; {history_changes} history modules updated')
