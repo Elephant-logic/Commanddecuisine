@@ -1,94 +1,124 @@
-/* Command de Cuisine - mobile temperature sign control */
+/* Command de Cuisine - clean mobile temperature minus control */
 (function () {
   'use strict';
-  if (window.__cdcTempSignControl) return;
-  window.__cdcTempSignControl = true;
+  if (window.__cdcTempMinusClean) return;
+  window.__cdcTempMinusClean = true;
+
+  function txt(v) { return String(v == null ? '' : v).trim(); }
+
+  function isSignButton(btn) {
+    if (!btn || btn.tagName !== 'BUTTON') return false;
+    var t = txt(btn.textContent).replace(/\s+/g, '');
+    return t === '+' || t === '−' || t === '-' || t === '±';
+  }
 
   function looksLikeTemperatureInput(input) {
     if (!input || input.tagName !== 'INPUT') return false;
-    var ph = String(input.getAttribute('placeholder') || '').toLowerCase();
-    var name = String(input.getAttribute('name') || '').toLowerCase();
-    var aria = String(input.getAttribute('aria-label') || '').toLowerCase();
+    var ph = txt(input.getAttribute('placeholder')).toLowerCase();
+    var name = txt(input.getAttribute('name')).toLowerCase();
+    var aria = txt(input.getAttribute('aria-label')).toLowerCase();
     if (ph.indexOf('°c') >= 0 || ph.indexOf('ºc') >= 0) return true;
     if (name.indexOf('temp') >= 0 || aria.indexOf('temp') >= 0) return true;
-    var p = input.parentElement;
-    var context = p && p.parentElement ? String(p.parentElement.textContent || '').toLowerCase() : '';
-    return input.getAttribute('step') === '0.1' && (context.indexOf('temperature') >= 0 || context.indexOf('fridge') >= 0 || context.indexOf('freezer') >= 0);
+    var node = input.parentElement;
+    for (var i = 0; node && i < 4; i++, node = node.parentElement) {
+      var context = txt(node.textContent).toLowerCase();
+      if ((context.indexOf('temperature') >= 0 || context.indexOf('fridge') >= 0 || context.indexOf('freezer') >= 0) &&
+          (input.getAttribute('step') === '0.1' || input.dataset.cdcTempSign === '1')) return true;
+    }
+    return input.dataset.cdcTempSign === '1';
   }
 
-  function dispatch(input) {
+  function fire(input) {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function enhance(input) {
-    if (!looksLikeTemperatureInput(input) || input.dataset.cdcTempSign === '1') return;
-    input.dataset.cdcTempSign = '1';
+  function unwrapOldControl(input) {
+    var wrap = input.parentElement;
+    if (!wrap || !wrap.classList || !wrap.classList.contains('cdc-temp-signed-input')) return;
+    var parent = wrap.parentNode;
+    if (!parent) return;
+    parent.insertBefore(input, wrap);
+    wrap.remove();
+  }
 
+  function controlRow(input) {
+    var node = input.parentElement;
+    for (var i = 0; node && i < 4; i++, node = node.parentElement) {
+      var buttons = Array.prototype.slice.call(node.querySelectorAll('button')).filter(isSignButton);
+      if (buttons.length) return node;
+      if (node.querySelector && node.querySelector('select') && i > 0) return node;
+    }
+    return input.parentElement;
+  }
+
+  function cleanOldButtons(row) {
+    if (!row || !row.querySelectorAll) return;
+    Array.prototype.slice.call(row.querySelectorAll('button')).forEach(function (btn) {
+      if (isSignButton(btn) && !btn.classList.contains('cdc-temp-minus-only')) btn.remove();
+    });
+  }
+
+  function makeNegative(input) {
+    var raw = txt(input.value).replace(',', '.');
+    if (!raw) {
+      input.value = '-';
+    } else if (raw !== '-') {
+      var n = Number(raw);
+      if (Number.isFinite(n)) input.value = String(-Math.abs(n));
+      else if (raw.charAt(0) !== '-') input.value = '-' + raw.replace(/^\+/, '');
+    }
+    fire(input);
+    input.focus();
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+  }
+
+  function enhance(input) {
+    if (!looksLikeTemperatureInput(input)) return;
+
+    unwrapOldControl(input);
+    input.dataset.cdcTempSign = 'clean';
     input.type = 'text';
     input.setAttribute('inputmode', 'decimal');
     input.setAttribute('autocomplete', 'off');
     input.setAttribute('enterkeyhint', 'done');
     input.setAttribute('aria-label', input.getAttribute('aria-label') || 'Temperature in degrees Celsius');
-
-    var parent = input.parentNode;
-    if (!parent) return;
-
-    var wrap = document.createElement('div');
-    wrap.className = 'cdc-temp-signed-input';
-    wrap.style.cssText = 'display:flex;align-items:stretch;gap:6px;min-width:0;width:100%;';
-    parent.insertBefore(wrap, input);
-    wrap.appendChild(input);
-    input.style.flex = '1 1 auto';
     input.style.minWidth = '0';
 
-    var sign = document.createElement('button');
-    sign.type = 'button';
-    sign.className = 'btn ghost';
-    sign.textContent = '±';
-    sign.title = 'Change temperature sign';
-    sign.setAttribute('aria-label', 'Change temperature sign');
-    sign.style.cssText = 'min-width:46px;padding-left:10px;padding-right:10px;font-size:20px;font-weight:800;';
-    wrap.appendChild(sign);
+    var row = controlRow(input);
+    cleanOldButtons(row);
 
-    sign.addEventListener('click', function (ev) {
+    if (input.parentElement && input.parentElement.querySelector(':scope > .cdc-temp-minus-only')) return;
+
+    var minus = document.createElement('button');
+    minus.type = 'button';
+    minus.className = 'btn ghost cdc-temp-minus-only';
+    minus.textContent = '−';
+    minus.title = 'Make temperature negative';
+    minus.setAttribute('aria-label', 'Make temperature negative');
+    minus.style.cssText = 'min-width:46px;padding-left:12px;padding-right:12px;font-size:22px;font-weight:800;';
+
+    input.insertAdjacentElement('afterend', minus);
+    minus.addEventListener('click', function (ev) {
       ev.preventDefault();
       ev.stopPropagation();
-      var raw = String(input.value || '').trim().replace(',', '.');
-
-      if (!raw) {
-        input.value = '-';
-      } else if (raw === '-') {
-        input.value = '';
-      } else {
-        var n = Number(raw);
-        if (Number.isFinite(n)) {
-          input.value = n < 0 ? String(Math.abs(n)) : '-' + String(Math.abs(n));
-        } else {
-          input.value = raw.charAt(0) === '-' ? raw.slice(1) : '-' + raw.replace(/^\+/, '');
-        }
-      }
-      dispatch(input);
-      input.focus();
-      try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+      makeNegative(input);
     });
 
     input.addEventListener('blur', function () {
-      var raw = String(input.value || '').trim().replace(',', '.');
+      var raw = txt(input.value).replace(',', '.');
       if (!raw || raw === '-') return;
       var n = Number(raw);
       if (Number.isFinite(n)) {
         input.value = String(n);
-        dispatch(input);
+        fire(input);
       }
     });
   }
 
-  function scan(root) {
-    var scope = root && root.querySelectorAll ? root : document;
-    var inputs = scope.querySelectorAll ? scope.querySelectorAll('input') : [];
+  function scan() {
+    var inputs = document.querySelectorAll('input');
     for (var i = 0; i < inputs.length; i++) enhance(inputs[i]);
-    if (scope.tagName === 'INPUT') enhance(scope);
   }
 
   var queued = false;
@@ -97,16 +127,15 @@
     queued = true;
     requestAnimationFrame(function () {
       queued = false;
-      scan(document);
+      scan();
     });
   }
 
   function start() {
-    scan(document);
-    var obs = new MutationObserver(queueScan);
-    obs.observe(document.documentElement, { childList: true, subtree: true });
+    scan();
+    new MutationObserver(queueScan).observe(document.documentElement, { childList: true, subtree: true });
     window.CDCTemperatureSignControl = { refresh: queueScan };
-    console.info('[Command de Cuisine] Mobile temperature ± control active');
+    console.info('[Command de Cuisine] Clean single-minus temperature entry active');
   }
 
   if (document.readyState === 'loading') {
