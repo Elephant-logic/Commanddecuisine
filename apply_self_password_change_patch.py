@@ -179,14 +179,14 @@ presentation_replacements = {
     "Save historic records": "Save records",
     "Enter at least one missing reading": "Add at least one record or leave this round incomplete",
     "Enter at least one missing record": "Add at least one record or leave this round incomplete",
-    "readings entered later": "historical records added",
-    "records entered later": "historical records added",
-    "historic temperature backfill": "historical temperature entry",
-    "Historic temperature backfill": "Historical temperature entry",
-    "Historic temperatures were not saved": "Historical records were not saved",
-    "historic reading": "historical record",
-    "Historic reading": "Historical record",
-    "audit('temp_backfill'": "audit('temp_historic_entry'",
+    "readings entered later": "records added",
+    "records entered later": "records added",
+    "historic temperature backfill": "temperature record",
+    "Historic temperature backfill": "Temperature record",
+    "Historic temperatures were not saved": "Records were not saved",
+    "historic reading": "record",
+    "Historic reading": "Record",
+    "audit('temp_backfill'": "audit('temp_record_added'",
 }
 changed = 0
 for old, new in presentation_replacements.items():
@@ -205,9 +205,9 @@ main_path = app / 'main_app.js'
 if main_path.exists():
     mj = main_path.read_text(encoding='utf-8')
     for old, new in {
-        "entered later": "historical entry",
-        "Backfill": "Historical entry",
-        "backfill": "historical entry",
+        "entered later": "record",
+        "Backfill": "Record",
+        "backfill": "record",
     }.items():
         # Only replace user-facing phrases already containing temperature/history
         # by targeted known strings rather than changing identifiers globally.
@@ -218,10 +218,10 @@ if main_path.exists():
 # Cache-bust again so kitchen devices see the neutral wording promptly.
 if runtime_loader.exists():
     rt = runtime_loader.read_text(encoding='utf-8')
-    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-historic1', rt)
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-paperlike1', rt)
     runtime_loader.write_text(rt, encoding='utf-8')
 if guard.exists():
     gt = guard.read_text(encoding='utf-8')
-    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-historic1', gt)
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-paperlike1', gt)
     guard.write_text(gt, encoding='utf-8')
-print(f'Applied neutral historical-entry presentation ({changed} wording updates); audit timestamps preserved')
+print(f'Applied paper-like temperature record presentation ({changed} wording updates); audit timestamps preserved')
