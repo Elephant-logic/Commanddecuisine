@@ -237,13 +237,24 @@ try:
 except Exception as exc:
     raise SystemExit(f'Could not decode Kitchen Tools payload: {exc}')
 tools_sha = hashlib.sha256(tools_raw).hexdigest()
-expected_tools_sha = 'd1e5da8c57fd1a8ef45c0b98478c67338e215ccbc5fdf0873162d1731766b267'
+expected_tools_sha = 'f18e7828c1cf7e557d6ae81e36cc02fadb12b2312ca1bf8e98a1795b8b555b28'
 if tools_sha != expected_tools_sha:
     raise SystemExit(f'Kitchen Tools checksum mismatch: {tools_sha}')
 tools_target = app / 'kitchen_tools.js'
 tools_target.write_bytes(tools_raw)
 if hashlib.sha256(tools_target.read_bytes()).hexdigest() != expected_tools_sha:
     raise SystemExit('Kitchen Tools write verification failed')
+
+
+# On mobile, keep the floating timer button above the fixed bottom navigation
+# so it never covers More (where History is reached).
+tools_text = tools_target.read_text(encoding='utf-8')
+mobile_timer_old = "@media(max-width:620px){.cdc-kt-grid{grid-template-columns:1fr 1fr}.cdc-kt-grid .name{grid-column:1/-1}.cdc-kt-grid .add{grid-column:1/-1}.cdc-kt-toolgrid{grid-template-columns:1fr}.cdc-kt-time{font-size:24px}#${FAB}{right:12px;bottom:12px}}"
+mobile_timer_new = "@media(max-width:900px){#${FAB}{right:12px;bottom:calc(82px + env(safe-area-inset-bottom));max-width:calc(100vw - 24px)}}@media(max-width:620px){.cdc-kt-grid{grid-template-columns:1fr 1fr}.cdc-kt-grid .name{grid-column:1/-1}.cdc-kt-grid .add{grid-column:1/-1}.cdc-kt-toolgrid{grid-template-columns:1fr}.cdc-kt-time{font-size:24px}}"
+if mobile_timer_old not in tools_text:
+    raise SystemExit('Kitchen Tools mobile FAB marker not found')
+tools_text = tools_text.replace(mobile_timer_old, mobile_timer_new, 1)
+tools_target.write_text(tools_text, encoding='utf-8')
 
 # Serve the runtime file.
 srv = server.read_text(encoding='utf-8')
