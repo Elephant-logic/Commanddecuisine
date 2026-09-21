@@ -347,13 +347,16 @@ print(f'History/navigation repair applied; {history_changes} history modules upd
 # 2026-09-21 Kitchen Tools v2.
 # Replaces the first floating timer UI with a left-docked service timer system,
 # recipe-step timer buttons and Chef "what's next?" support.
-tools_v2_payload = Path('cdc_kitchen_tools_v2.js.b64')
-if not tools_v2_payload.exists():
-    raise SystemExit('Missing Kitchen Tools v2 payload: cdc_kitchen_tools_v2.js.b64')
+tools_v2_parts = [Path('cdc_kitchen_tools_v2.part1'), Path('cdc_kitchen_tools_v2.part2'), Path('cdc_kitchen_tools_v2.part3')]
+if not all(p.exists() for p in tools_v2_parts):
+    raise SystemExit('Missing one or more Kitchen Tools v2 payload parts')
 try:
-    tools_v2_raw = zlib.decompress(base64.b64decode(tools_v2_payload.read_text(encoding='utf-8').strip()))
+    tools_v2_b64 = ''.join(p.read_text(encoding='utf-8').strip() for p in tools_v2_parts)
+    if hashlib.sha256(tools_v2_b64.encode('utf-8')).hexdigest() != '244c9a4a23d635366b977f7a06ad3ce5be4d73618dcd451369006a47f29992a9':
+        raise ValueError('payload text checksum mismatch')
+    tools_v2_raw = zlib.decompress(base64.b64decode(tools_v2_b64))
 except Exception as exc:
-    raise SystemExit(f'Could not decode Kitchen Tools v2 payload: {exc}')
+    raise SystemExit(f'Could not decode Kitchen Tools v2 payload parts: {exc}')
 tools_v2_sha = hashlib.sha256(tools_v2_raw).hexdigest()
 expected_tools_v2_sha = '20ff802da431f705695bea8915bb69e1e658051ad97da0339279e71ef45f9090'
 if tools_v2_sha != expected_tools_v2_sha:
