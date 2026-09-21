@@ -225,3 +225,60 @@ if guard.exists():
     gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-paperlike1', gt)
     guard.write_text(gt, encoding='utf-8')
 print(f'Applied paper-like temperature record presentation ({changed} wording updates); audit timestamps preserved')
+
+
+# 2026-09-21 Kitchen Tools: persistent multi-timers and quick calculations.
+# Timers are device-local operational helpers; they do not write compliance/state data.
+tools_payload = Path('cdc_kitchen_tools.js.b64')
+if not tools_payload.exists():
+    raise SystemExit('Missing Kitchen Tools payload: cdc_kitchen_tools.js.b64')
+try:
+    tools_raw = zlib.decompress(base64.b64decode(tools_payload.read_text(encoding='utf-8').strip()))
+except Exception as exc:
+    raise SystemExit(f'Could not decode Kitchen Tools payload: {exc}')
+tools_sha = hashlib.sha256(tools_raw).hexdigest()
+expected_tools_sha = 'f18e7828c1cf7e557d6ae81e36cc02fadb12b2312ca1bf8e98a1795b8b555b28'
+if tools_sha != expected_tools_sha:
+    raise SystemExit(f'Kitchen Tools checksum mismatch: {tools_sha}')
+tools_target = app / 'kitchen_tools.js'
+tools_target.write_bytes(tools_raw)
+if hashlib.sha256(tools_target.read_bytes()).hexdigest() != expected_tools_sha:
+    raise SystemExit('Kitchen Tools write verification failed')
+
+# Serve the runtime file.
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+tools_route = "    '/kitchen_tools.js',\n"
+if tools_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding Kitchen Tools')
+    srv = srv.replace(runtime_marker, runtime_marker + tools_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+# Load Kitchen Tools after Chef Pro so timer voice/text commands can wrap askAI.
+if not runtime_loader.exists():
+    raise SystemExit('runtime_loader.js missing while adding Kitchen Tools')
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for Kitchen Tools')
+body = m.group(2)
+if "'kitchen_tools.js'" not in body and '"kitchen_tools.js"' not in body:
+    body = body.rstrip() + ",\n    'kitchen_tools.js'"
+    rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-tools1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-tools1', gt)
+    guard.write_text(gt, encoding='utf-8')
+
+# Build-time wiring checks.
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+if srv_check.count("'/kitchen_tools.js'") + srv_check.count('"/kitchen_tools.js"') != 1:
+    raise SystemExit('Kitchen Tools runtime route not installed exactly once')
+if rt_check.count("'kitchen_tools.js'") + rt_check.count('"kitchen_tools.js"') != 1:
+    raise SystemExit('Kitchen Tools module not installed exactly once')
+print('Applied Kitchen Tools: multi-timers, Chef timer commands, converter and portion scaler')
