@@ -342,3 +342,66 @@ if guard.exists():
     gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-historynav1', gt)
     guard.write_text(gt, encoding='utf-8')
 print(f'History/navigation repair applied; {history_changes} history modules updated')
+
+
+# 2026-09-21 Kitchen Tools v2.
+# Replaces the first floating timer UI with a left-docked service timer system,
+# recipe-step timer buttons and Chef "what's next?" support.
+tools_v2_payload = Path('cdc_kitchen_tools_v2.js.b64')
+if not tools_v2_payload.exists():
+    raise SystemExit('Missing Kitchen Tools v2 payload: cdc_kitchen_tools_v2.js.b64')
+try:
+    tools_v2_raw = zlib.decompress(base64.b64decode(tools_v2_payload.read_text(encoding='utf-8').strip()))
+except Exception as exc:
+    raise SystemExit(f'Could not decode Kitchen Tools v2 payload: {exc}')
+tools_v2_sha = hashlib.sha256(tools_v2_raw).hexdigest()
+expected_tools_v2_sha = '20ff802da431f705695bea8915bb69e1e658051ad97da0339279e71ef45f9090'
+if tools_v2_sha != expected_tools_v2_sha:
+    raise SystemExit(f'Kitchen Tools v2 checksum mismatch: {tools_v2_sha}')
+tools_v2_target = app / 'kitchen_tools_v2.js'
+tools_v2_target.write_bytes(tools_v2_raw)
+if hashlib.sha256(tools_v2_target.read_bytes()).hexdigest() != expected_tools_v2_sha:
+    raise SystemExit('Kitchen Tools v2 write verification failed')
+
+# Serve v2.
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+v2_route = "    '/kitchen_tools_v2.js',\n"
+if v2_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding Kitchen Tools v2')
+    srv = srv.replace(runtime_marker, runtime_marker + v2_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+# Disable the old timer module and load v2 last so it can wrap Chef safely.
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for Kitchen Tools v2')
+body = m.group(2)
+body = body.replace(",\n    'kitchen_tools.js'", "")
+body = body.replace(",\n    \"kitchen_tools.js\"", "")
+body = body.replace("'kitchen_tools.js',\n", "")
+body = body.replace('"kitchen_tools.js",\n', "")
+body = body.replace(",\n    'kitchen_tools_v2.js'", "")
+body = body.replace(",\n    \"kitchen_tools_v2.js\"", "")
+body = body.rstrip() + ",\n    'kitchen_tools_v2.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-tools-v2', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-tools-v2', gt)
+    guard.write_text(gt, encoding='utf-8')
+
+# Build-time wiring checks.
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+if srv_check.count("'/kitchen_tools_v2.js'") + srv_check.count('"/kitchen_tools_v2.js"') != 1:
+    raise SystemExit('Kitchen Tools v2 runtime route not installed exactly once')
+if rt_check.count("'kitchen_tools_v2.js'") + rt_check.count('"kitchen_tools_v2.js"') != 1:
+    raise SystemExit('Kitchen Tools v2 module not installed exactly once')
+if "'kitchen_tools.js'" in rt_check or '"kitchen_tools.js"' in rt_check:
+    raise SystemExit('Legacy Kitchen Tools module is still active')
+print('Applied Kitchen Tools v2: left-docked multi-timers, recipe timers, service view, Chef commands and quick calculations')
