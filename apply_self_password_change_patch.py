@@ -164,3 +164,63 @@ if guard.exists():
     gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260917-chef2', gt)
     guard.write_text(gt, encoding='utf-8')
 print('Applied Chef Pro v2 culinary reasoning and recipe knowledge upgrade')
+
+
+# 2026-09-21 neutral historic-entry presentation.
+# Keep immutable entry timestamps/backfill metadata for auditability, but do not
+# stigmatise normal retrospective entry in the everyday kitchen UI.
+fixes_path = app / 'kitchen_fixes_20260810.js'
+if not fixes_path.exists():
+    raise SystemExit('Historic entry presentation target missing: app/kitchen_fixes_20260810.js')
+fx = fixes_path.read_text(encoding='utf-8')
+presentation_replacements = {
+    "Fill missing temperature round": "Add missing temperature record",
+    "Save historic readings": "Save records",
+    "Save historic records": "Save records",
+    "Enter at least one missing reading": "Add at least one record or leave this round incomplete",
+    "Enter at least one missing record": "Add at least one record or leave this round incomplete",
+    "readings entered later": "historical records added",
+    "records entered later": "historical records added",
+    "historic temperature backfill": "historical temperature entry",
+    "Historic temperature backfill": "Historical temperature entry",
+    "Historic temperatures were not saved": "Historical records were not saved",
+    "historic reading": "historical record",
+    "Historic reading": "Historical record",
+}
+changed = 0
+for old, new in presentation_replacements.items():
+    if old in fx:
+        changed += fx.count(old)
+        fx = fx.replace(old, new)
+# Keep source:'manager-backfill', backfilled:true and enteredAt untouched.
+# Those fields are the quiet audit trail showing when the digital entry was made.
+if changed == 0:
+    raise SystemExit('Historic entry presentation markers not found; refusing silent no-op')
+fixes_path.write_text(fx, encoding='utf-8')
+
+# Make the primary temperature history wording neutral if a later patch exposes
+# source text directly. Internal audit/source metadata remains unchanged.
+main_path = app / 'main_app.js'
+if main_path.exists():
+    mj = main_path.read_text(encoding='utf-8')
+    for old, new in {
+        "entered later": "historical entry",
+        "Backfill": "Historical entry",
+        "backfill": "historical entry",
+    }.items():
+        # Only replace user-facing phrases already containing temperature/history
+        # by targeted known strings rather than changing identifiers globally.
+        mj = mj.replace("temperature " + old, "temperature " + new)
+        mj = mj.replace("Temperature " + old, "Temperature " + new)
+    main_path.write_text(mj, encoding='utf-8')
+
+# Cache-bust again so kitchen devices see the neutral wording promptly.
+if runtime_loader.exists():
+    rt = runtime_loader.read_text(encoding='utf-8')
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-historic1', rt)
+    runtime_loader.write_text(rt, encoding='utf-8')
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-historic1', gt)
+    guard.write_text(gt, encoding='utf-8')
+print(f'Applied neutral historical-entry presentation ({changed} wording updates); audit timestamps preserved')
