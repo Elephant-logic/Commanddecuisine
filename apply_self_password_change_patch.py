@@ -186,6 +186,7 @@ presentation_replacements = {
     "Historic temperatures were not saved": "Historical records were not saved",
     "historic reading": "historical record",
     "Historic reading": "Historical record",
+    "audit('temp_backfill'": "audit('temp_historic_entry'",
 }
 changed = 0
 for old, new in presentation_replacements.items():
