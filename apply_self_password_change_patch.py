@@ -622,7 +622,7 @@ temp_sign_src = Path('temperature_negative_input.js')
 if not temp_sign_src.exists():
     raise SystemExit('Missing mobile temperature sign control asset')
 temp_sign_raw = temp_sign_src.read_bytes()
-expected_temp_sign_sha = '8ed9e2a548b897f2255350afe8e8b813557166c664896c0b97b7ecd022ba52d0'
+expected_temp_sign_sha = '8ecaf8b71e9d87d9645007943c79ebce07d9736b5861559f8dc25cfa8f9edf78'
 if hashlib.sha256(temp_sign_raw).hexdigest() != expected_temp_sign_sha:
     raise SystemExit('Mobile temperature sign control checksum mismatch')
 temp_sign_target = app / 'temperature_negative_input.js'
@@ -648,12 +648,12 @@ body = body.replace("'temperature_negative_input.js',\n", "")
 body = body.replace('"temperature_negative_input.js",\n', "")
 body = body.rstrip() + ",\n    'temperature_negative_input.js'"
 rt = rt[:m.start(2)] + body + rt[m.end(2):]
-rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-tempminus1', rt)
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-tempminus2', rt)
 runtime_loader.write_text(rt, encoding='utf-8')
 
 if guard.exists():
     gt = guard.read_text(encoding='utf-8')
-    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-tempminus1', gt)
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-tempminus2', gt)
     guard.write_text(gt, encoding='utf-8')
 
 srv_check = server.read_text(encoding='utf-8')
