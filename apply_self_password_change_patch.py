@@ -476,3 +476,73 @@ if srv_check.count("'/recipe_dependency_sync.js'") + srv_check.count('"/recipe_d
 if rt_check.count("'recipe_dependency_sync.js'") + rt_check.count('"recipe_dependency_sync.js"') != 1:
     raise SystemExit('Recipe dependency sync module not installed exactly once')
 print('Applied recipe dependency sync: verified supplier allergens, allergen matrix and stock-link reconciliation')
+
+
+# 2026-09-21 Operations upgrade.
+# Adds service mode, live supplier-based recipe costing, recipe version history,
+# supplier/spec review and yield-aware menu/function stock requirements.
+# It is browser-side only and does not alter auth, environment or database schema.
+operations_parts = [
+    Path('cdc_operations_upgrade.part1'),
+    Path('cdc_operations_upgrade.part2'),
+    Path('cdc_operations_upgrade.part3'),
+    Path('cdc_operations_upgrade.part4'),
+    Path('cdc_operations_upgrade.part5'),
+]
+if not all(p.exists() for p in operations_parts):
+    raise SystemExit('Missing one or more operations upgrade payload parts')
+try:
+    operations_b64 = ''.join(p.read_text(encoding='utf-8').strip() for p in operations_parts)
+    operations_b64_sha = hashlib.sha256(operations_b64.encode('utf-8')).hexdigest()
+    if operations_b64_sha != '9027078a787b8fcb1303f7f514d6326d04a49d66328df502cfa20441f6b23f53':
+        raise ValueError(f'payload text checksum mismatch: {operations_b64_sha}')
+    operations_raw = zlib.decompress(base64.b64decode(operations_b64))
+except Exception as exc:
+    raise SystemExit(f'Could not decode operations upgrade payload: {exc}')
+operations_sha = hashlib.sha256(operations_raw).hexdigest()
+expected_operations_sha = '6a393751e6423bfcb5589f17a93e53b28b29c47f2b95e9376068e81fce1d3c2b'
+if operations_sha != expected_operations_sha:
+    raise SystemExit(f'Operations upgrade checksum mismatch: {operations_sha}')
+operations_target = app / 'operations_upgrade.js'
+operations_target.write_bytes(operations_raw)
+if hashlib.sha256(operations_target.read_bytes()).hexdigest() != expected_operations_sha:
+    raise SystemExit('Operations upgrade write verification failed')
+
+# Serve the final operations runtime.
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+operations_route = "    '/operations_upgrade.js',\n"
+if operations_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding operations upgrade')
+    srv = srv.replace(runtime_marker, runtime_marker + operations_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+# Load last so it can unify the already-installed recipe, stock, timer and
+# allergen modules without replacing them.
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for operations upgrade')
+body = m.group(2)
+body = body.replace(",\n    'operations_upgrade.js'", "")
+body = body.replace(",\n    \"operations_upgrade.js\"", "")
+body = body.replace("'operations_upgrade.js',\n", "")
+body = body.replace('"operations_upgrade.js",\n', "")
+body = body.rstrip() + ",\n    'operations_upgrade.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-ops1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-ops1', gt)
+    guard.write_text(gt, encoding='utf-8')
+
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+if srv_check.count("'/operations_upgrade.js'") + srv_check.count('"/operations_upgrade.js"') != 1:
+    raise SystemExit('Operations upgrade runtime route not installed exactly once')
+if rt_check.count("'operations_upgrade.js'") + rt_check.count('"operations_upgrade.js"') != 1:
+    raise SystemExit('Operations upgrade module not installed exactly once')
+print('Applied Operations upgrade: service mode, live costing, supplier specs, recipe versions and yield-aware requirements')
