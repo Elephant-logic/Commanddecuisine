@@ -612,3 +612,54 @@ if srv_check.count("'/contacts_directory.js'") + srv_check.count('"/contacts_dir
 if rt_check.count("'contacts_directory.js'") + rt_check.count('"contacts_directory.js"') != 1:
     raise SystemExit('Contacts directory module not installed exactly once')
 print('Applied Contacts directory: suppliers, engineers, priority numbers, Service Mode and Chef lookup')
+
+
+# 2026-09-21 Mobile freezer temperature sign control.
+# Some phone numeric keyboards omit a minus key, making freezer readings
+# impossible to enter. Add a visible +/- control without changing stored data.
+import hashlib
+temp_sign_src = Path('temperature_negative_input.js')
+if not temp_sign_src.exists():
+    raise SystemExit('Missing mobile temperature sign control asset')
+temp_sign_raw = temp_sign_src.read_bytes()
+expected_temp_sign_sha = '54b97e59f74a65364f7ead5aa3f5b3c99a39de7b387515972b4dddf774f91639'
+if hashlib.sha256(temp_sign_raw).hexdigest() != expected_temp_sign_sha:
+    raise SystemExit('Mobile temperature sign control checksum mismatch')
+temp_sign_target = app / 'temperature_negative_input.js'
+temp_sign_target.write_bytes(temp_sign_raw)
+
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+temp_sign_route = "    '/temperature_negative_input.js',\n"
+if temp_sign_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding mobile temperature sign control')
+    srv = srv.replace(runtime_marker, runtime_marker + temp_sign_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for mobile temperature sign control')
+body = m.group(2)
+body = body.replace(",\n    'temperature_negative_input.js'", "")
+body = body.replace(",\n    \"temperature_negative_input.js\"", "")
+body = body.replace("'temperature_negative_input.js',\n", "")
+body = body.replace('"temperature_negative_input.js",\n', "")
+body = body.rstrip() + ",\n    'temperature_negative_input.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-tempminus1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-tempminus1', gt)
+    guard.write_text(gt, encoding='utf-8')
+
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+if srv_check.count("'/temperature_negative_input.js'") + srv_check.count('"/temperature_negative_input.js"') != 1:
+    raise SystemExit('Mobile temperature sign route not installed exactly once')
+if rt_check.count("'temperature_negative_input.js'") + rt_check.count('"temperature_negative_input.js"') != 1:
+    raise SystemExit('Mobile temperature sign module not installed exactly once')
+print('Applied mobile temperature +/- entry control for freezer readings')
