@@ -408,3 +408,71 @@ if rt_check.count("'kitchen_tools_v2.js'") + rt_check.count('"kitchen_tools_v2.j
 if "'kitchen_tools.js'" in rt_check or '"kitchen_tools.js"' in rt_check:
     raise SystemExit('Legacy Kitchen Tools module is still active')
 print('Applied Kitchen Tools v2: left-docked multi-timers, recipe timers, service view, Chef commands and quick calculations')
+
+
+# 2026-09-21 Recipe dependency sync.
+# Recipe edits now reconcile verified supplier allergen declarations, allergen
+# matrix data and ingredient->stock links. Physical stock quantities are never
+# changed by this overlay.
+recipe_sync_parts = [
+    Path('cdc_recipe_sync.part1'),
+    Path('cdc_recipe_sync.part2'),
+    Path('cdc_recipe_sync.part3'),
+    Path('cdc_recipe_sync.part4'),
+]
+if not all(p.exists() for p in recipe_sync_parts):
+    raise SystemExit('Missing one or more recipe dependency sync payload parts')
+try:
+    recipe_sync_b64 = ''.join(p.read_text(encoding='utf-8').strip() for p in recipe_sync_parts)
+    recipe_sync_b64_sha = hashlib.sha256(recipe_sync_b64.encode('utf-8')).hexdigest()
+    if recipe_sync_b64_sha != '526b707d5c2ee05ed770e691a3ec404f8931f00b0bbe1288bff946b444a2be38':
+        raise ValueError(f'payload text checksum mismatch: {recipe_sync_b64_sha}')
+    recipe_sync_raw = zlib.decompress(base64.b64decode(recipe_sync_b64))
+except Exception as exc:
+    raise SystemExit(f'Could not decode recipe dependency sync payload: {exc}')
+recipe_sync_sha = hashlib.sha256(recipe_sync_raw).hexdigest()
+expected_recipe_sync_sha = 'bc90e4df12c281ebc6df257c5b6d0593c1fc8b4aa05305f5b48f378d4fe7f9c5'
+if recipe_sync_sha != expected_recipe_sync_sha:
+    raise SystemExit(f'Recipe dependency sync checksum mismatch: {recipe_sync_sha}')
+recipe_sync_target = app / 'recipe_dependency_sync.js'
+recipe_sync_target.write_bytes(recipe_sync_raw)
+if hashlib.sha256(recipe_sync_target.read_bytes()).hexdigest() != expected_recipe_sync_sha:
+    raise SystemExit('Recipe dependency sync write verification failed')
+
+# Serve the sync runtime.
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+recipe_sync_route = "    '/recipe_dependency_sync.js',\n"
+if recipe_sync_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding recipe dependency sync')
+    srv = srv.replace(runtime_marker, runtime_marker + recipe_sync_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+# Load it last, after integration bridge, recipe imports and Kitchen Tools.
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for recipe dependency sync')
+body = m.group(2)
+body = body.replace(",\n    'recipe_dependency_sync.js'", "")
+body = body.replace(",\n    \"recipe_dependency_sync.js\"", "")
+body = body.replace("'recipe_dependency_sync.js',\n", "")
+body = body.replace('"recipe_dependency_sync.js",\n', "")
+body = body.rstrip() + ",\n    'recipe_dependency_sync.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260921-recipe-sync1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260921-recipe-sync1', gt)
+    guard.write_text(gt, encoding='utf-8')
+
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+if srv_check.count("'/recipe_dependency_sync.js'") + srv_check.count('"/recipe_dependency_sync.js"') != 1:
+    raise SystemExit('Recipe dependency sync runtime route not installed exactly once')
+if rt_check.count("'recipe_dependency_sync.js'") + rt_check.count('"recipe_dependency_sync.js"') != 1:
+    raise SystemExit('Recipe dependency sync module not installed exactly once')
+print('Applied recipe dependency sync: verified supplier allergens, allergen matrix and stock-link reconciliation')
