@@ -779,13 +779,13 @@ body = body.replace("'team_login_accounts.js',\n", "")
 body = body.replace('"team_login_accounts.js",\n', "")
 body = body.rstrip() + ",\n    'team_login_accounts.js'"
 rt = rt[:m.start(2)] + body + rt[m.end(2):]
-rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260923-teamlogin1', rt)
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260923-teamlogin3', rt)
 runtime_loader.write_text(rt, encoding='utf-8')
 
 guard = app / 'temperature_reset_guard.js'
 if guard.exists():
     gt = guard.read_text(encoding='utf-8')
-    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260923-teamlogin1', gt)
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260923-teamlogin3', gt)
     guard.write_text(gt, encoding='utf-8')
 
 srv_check = server.read_text(encoding='utf-8')
@@ -797,6 +797,8 @@ if rt_check.count("'team_login_accounts.js'") + rt_check.count('"team_login_acco
     raise SystemExit('Team login accounts module not installed exactly once')
 if 'account_exists_here=False; account_taken_elsewhere=False' not in auth_check or 'existing_profile=next((u for u in state.setdefault' not in auth_check:
     raise SystemExit('Team login backend repair did not install')
+if 'delete_requested' not in auth_check or "'delete_user'" not in auth_check:
+    raise SystemExit('Team delete backend did not survive final Team login repair')
 print('Applied Team login repair: Add person requires password; existing profiles can be provisioned/reset safely')
 
 # Force the repaired Team login UI to load directly after all other page scripts.
@@ -804,7 +806,7 @@ print('Applied Team login repair: Add person requires password; existing profile
 index = app / 'index.html'
 team_html = index.read_text(encoding='utf-8')
 team_html = re.sub(r'\s*<script[^>]+src=["\']/?team_login_accounts\.js(?:\?[^"\']*)?["\'][^>]*></script>\s*', '\n', team_html, flags=re.I)
-team_tag = '<script src="/team_login_accounts.js?v=20260923-teamlogin2"></script>'
+team_tag = '<script src="/team_login_accounts.js?v=20260923-teamlogin3"></script>'
 if '</body>' not in team_html:
     raise SystemExit('Could not locate </body> while installing direct Team login UI')
 team_html = team_html.replace('</body>', team_tag + '\n</body>', 1)
