@@ -817,6 +817,31 @@ if final_team_html.count(team_tag) != 1:
     raise SystemExit('Direct Team login UI tag not installed exactly once')
 print('Forced Team login UI to load directly after other page scripts')
 
+# Final guard for the stale-client historic-temperature fallback. Some account
+# patches touch auth_controls.py late in the build; make sure the helper used by
+# save_state survives those overlays.
+auth_path = app / 'auth_controls.py'
+auth_final = auth_path.read_text(encoding='utf-8')
+fallback_call = 'backdated_inserted=_sync_backdated_temperature_candidates(conn,venue_id,incoming,user)'
+if fallback_call in auth_final and 'def _sync_backdated_temperature_candidates(' not in auth_final:
+    auth_source = Path('auth_controls_override.py').read_text(encoding='utf-8')
+    helper_start = auth_source.find('_BACKDATED_TEMP_SOURCES =')
+    helper_end = auth_source.find('def save_state(handler, payload):', helper_start)
+    save_marker = 'def save_state(handler, payload):'
+    if helper_start < 0 or helper_end < 0 or save_marker not in auth_final:
+        raise SystemExit('Could not restore back-dated temperature persistence helper')
+    helper_block = auth_source[helper_start:helper_end].rstrip() + '\n\n'
+    if 'from datetime import datetime' not in auth_final:
+        auth_final = auth_final.replace('import contextvars\n', 'import contextvars\nfrom datetime import datetime\n', 1)
+    auth_final = auth_final.replace(save_marker, helper_block + save_marker, 1)
+    auth_path.write_text(auth_final, encoding='utf-8')
+
+auth_final = auth_path.read_text(encoding='utf-8')
+if fallback_call in auth_final and 'def _sync_backdated_temperature_candidates(' not in auth_final:
+    raise SystemExit('Back-dated temperature persistence helper missing after final overlays')
+print('Verified back-dated temperature persistence helper after final auth overlays')
+
+
 
 
 # 2026-09-23 auditable historic temperature round correction.
