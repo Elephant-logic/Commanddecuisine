@@ -663,3 +663,143 @@ if srv_check.count("'/temperature_negative_input.js'") + srv_check.count('"/temp
 if rt_check.count("'temperature_negative_input.js'") + rt_check.count('"temperature_negative_input.js"') != 1:
     raise SystemExit('Mobile temperature sign module not installed exactly once')
 print('Applied mobile temperature +/- entry control for freezer readings')
+
+
+# 2026-09-23 Team login/password repair.
+# Keep Team profiles and real sign-in accounts together. New people require an
+# initial temporary password; existing profile-only rows can be provisioned with
+# a login by setting a password. Existing passwords are never changed unless a
+# manager explicitly submits a new one.
+team_src = Path('team_login_accounts.js')
+if not team_src.exists():
+    raise SystemExit('Missing Team login accounts runtime')
+team_target = app / 'team_login_accounts.js'
+team_target.write_bytes(team_src.read_bytes())
+
+auth_path = app / 'auth_controls.py'
+auth_text = auth_path.read_text(encoding='utf-8')
+
+# If an older UI created a Team profile without a user_accounts row, let the
+# normal create-user endpoint adopt that profile instead of appending a duplicate.
+create_old = """                current = _read_venue_state(venue_id, conn=conn, for_update=True); state=current['state']
+                public_user={'id':user_id,'username':username,'name':name,'role':role,'jobTitle':job_title,'active':True,'mustChangePassword':True,'createdAt':app.utcnow()}
+                state.setdefault('users',[]).append(public_user)
+                revision=current['revision']+1
+"""
+create_new = """                current = _read_venue_state(venue_id, conn=conn, for_update=True); state=current['state']
+                existing_profile=next((u for u in state.setdefault('users',[]) if str(u.get('username','')).lower()==username),None)
+                if existing_profile:
+                    public_user=existing_profile
+                    user_id=str(public_user.get('id') or user_id)
+                    public_user.update({'id':user_id,'username':username,'name':name,'role':role,'jobTitle':job_title,'active':True,'mustChangePassword':True})
+                    public_user.setdefault('createdAt',app.utcnow())
+                else:
+                    public_user={'id':user_id,'username':username,'name':name,'role':role,'jobTitle':job_title,'active':True,'mustChangePassword':True,'createdAt':app.utcnow()}
+                    state.setdefault('users',[]).append(public_user)
+                revision=current['revision']+1
+"""
+if 'existing_profile=next((u for u in state.setdefault' not in auth_text:
+    if create_old not in auth_text:
+        raise SystemExit('Could not locate create_user profile block for Team login repair')
+    auth_text = auth_text.replace(create_old, create_new, 1)
+
+# The manager password action also repairs a legacy profile-only person. Query
+# the real account table first; if no account exists for this venue and the
+# manager supplied a password, create the account using the existing profile id.
+manage_probe_old = """            new_password=payload.get('newPassword')
+            if new_password is not None and not _password_ok(str(new_password)):
+                conn.rollback(); handler.send_json({'error':'Temporary password must be at least 10 characters.'},400); return
+            if not any(u.get('role')=='manager' and u.get('active',True) for u in users):
+"""
+manage_probe_new = """            new_password=payload.get('newPassword')
+            if new_password is not None and not _password_ok(str(new_password)):
+                conn.rollback(); handler.send_json({'error':'Temporary password must be at least 10 characters.'},400); return
+            account_exists_here=False; account_taken_elsewhere=False
+            with conn.cursor() as cur:
+                cur.execute('SELECT venue_id FROM user_accounts WHERE username=%s',(username,))
+                account_row=cur.fetchone()
+            if account_row:
+                account_exists_here=str(account_row['venue_id'])==str(venue_id)
+                account_taken_elsewhere=not account_exists_here
+            if new_password is not None and account_taken_elsewhere:
+                conn.rollback(); handler.send_json({'error':'That username belongs to a different venue. Choose a different username for this person.'},409); return
+            if not any(u.get('role')=='manager' and u.get('active',True) for u in users):
+"""
+if 'account_exists_here=False; account_taken_elsewhere=False' not in auth_text:
+    if manage_probe_old not in auth_text:
+        raise SystemExit('Could not locate manage_user password block for Team login repair')
+    auth_text = auth_text.replace(manage_probe_old, manage_probe_new, 1)
+
+manage_write_old = """            with conn.cursor() as cur:
+                cur.execute('UPDATE user_accounts SET name=%s,role=%s,job_title=%s,active=%s WHERE username=%s AND venue_id=%s', fields)
+                if new_password is not None:
+                    cur.execute('UPDATE user_accounts SET password=%s,must_change_password=TRUE WHERE username=%s AND venue_id=%s',
+                                (app.hash_password(str(new_password)),username,venue_id))
+                    target['mustChangePassword']=True
+                cur.execute('UPDATE venue_states SET state=%s::jsonb,revision=%s,updated_at=NOW(),updated_by=%s WHERE venue_id=%s',
+"""
+manage_write_new = """            with conn.cursor() as cur:
+                if account_exists_here:
+                    cur.execute('UPDATE user_accounts SET name=%s,role=%s,job_title=%s,active=%s WHERE username=%s AND venue_id=%s', fields)
+                    if new_password is not None:
+                        cur.execute('UPDATE user_accounts SET password=%s,must_change_password=TRUE WHERE username=%s AND venue_id=%s',
+                                    (app.hash_password(str(new_password)),username,venue_id))
+                        target['mustChangePassword']=True
+                elif new_password is not None:
+                    account_user_id=str(target.get('id') or ('u_'+app.secrets.token_hex(8)))
+                    target['id']=account_user_id; target['mustChangePassword']=True
+                    cur.execute('''INSERT INTO user_accounts(username,venue_id,user_id,name,role,job_title,password,active,must_change_password)
+                                   VALUES(%s,%s,%s,%s,%s,%s,%s,%s,TRUE)''',
+                                (username,venue_id,account_user_id,target.get('name') or username,target.get('role') or 'staff',
+                                 target.get('jobTitle') or '',app.hash_password(str(new_password)),bool(target.get('active',True))))
+                cur.execute('UPDATE venue_states SET state=%s::jsonb,revision=%s,updated_at=NOW(),updated_by=%s WHERE venue_id=%s',
+"""
+if "account_user_id=str(target.get('id')" not in auth_text:
+    if manage_write_old not in auth_text:
+        raise SystemExit('Could not locate manage_user account write block for Team login repair')
+    auth_text = auth_text.replace(manage_write_old, manage_write_new, 1)
+
+auth_path.write_text(auth_text, encoding='utf-8')
+
+# Serve the Team runtime and load it last so it replaces the old profile-only
+# Team editor while remaining compatible with the self-service password button.
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+team_route = "    '/team_login_accounts.js',\n"
+if team_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding Team login accounts')
+    srv = srv.replace(runtime_marker, runtime_marker + team_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+runtime_loader = app / 'runtime_loader.js'
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for Team login accounts')
+body = m.group(2)
+body = body.replace(",\n    'team_login_accounts.js'", "")
+body = body.replace(",\n    \"team_login_accounts.js\"", "")
+body = body.replace("'team_login_accounts.js',\n", "")
+body = body.replace('"team_login_accounts.js",\n', "")
+body = body.rstrip() + ",\n    'team_login_accounts.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260923-teamlogin1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+guard = app / 'temperature_reset_guard.js'
+if guard.exists():
+    gt = guard.read_text(encoding='utf-8')
+    gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260923-teamlogin1', gt)
+    guard.write_text(gt, encoding='utf-8')
+
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+auth_check = auth_path.read_text(encoding='utf-8')
+if srv_check.count("'/team_login_accounts.js'") + srv_check.count('"/team_login_accounts.js"') != 1:
+    raise SystemExit('Team login accounts route not installed exactly once')
+if rt_check.count("'team_login_accounts.js'") + rt_check.count('"team_login_accounts.js"') != 1:
+    raise SystemExit('Team login accounts module not installed exactly once')
+if 'account_exists_here=False; account_taken_elsewhere=False' not in auth_check or 'existing_profile=next((u for u in state.setdefault' not in auth_check:
+    raise SystemExit('Team login backend repair did not install')
+print('Applied Team login repair: Add person requires password; existing profiles can be provisioned/reset safely')
