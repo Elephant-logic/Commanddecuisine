@@ -709,12 +709,8 @@ if 'existing_profile=next((u for u in state.setdefault' not in auth_text:
 manage_probe_old = """            new_password=payload.get('newPassword')
             if new_password is not None and not _password_ok(str(new_password)):
                 conn.rollback(); handler.send_json({'error':'Temporary password must be at least 10 characters.'},400); return
-            if not any(u.get('role')=='manager' and u.get('active',True) for u in users):
 """
-manage_probe_new = """            new_password=payload.get('newPassword')
-            if new_password is not None and not _password_ok(str(new_password)):
-                conn.rollback(); handler.send_json({'error':'Temporary password must be at least 10 characters.'},400); return
-            account_exists_here=False; account_taken_elsewhere=False
+manage_probe_new = manage_probe_old + """            account_exists_here=False; account_taken_elsewhere=False
             with conn.cursor() as cur:
                 cur.execute('SELECT venue_id FROM user_accounts WHERE username=%s',(username,))
                 account_row=cur.fetchone()
@@ -723,11 +719,10 @@ manage_probe_new = """            new_password=payload.get('newPassword')
                 account_taken_elsewhere=not account_exists_here
             if new_password is not None and account_taken_elsewhere:
                 conn.rollback(); handler.send_json({'error':'That username belongs to a different venue. Choose a different username for this person.'},409); return
-            if not any(u.get('role')=='manager' and u.get('active',True) for u in users):
 """
 if 'account_exists_here=False; account_taken_elsewhere=False' not in auth_text:
     if manage_probe_old not in auth_text:
-        raise SystemExit('Could not locate manage_user password block for Team login repair')
+        raise SystemExit('Could not locate manage_user password validation for Team login repair')
     auth_text = auth_text.replace(manage_probe_old, manage_probe_new, 1)
 
 manage_write_old = """            with conn.cursor() as cur:
