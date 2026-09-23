@@ -1,6 +1,7 @@
 import json
 import re
 import contextvars
+from datetime import datetime
 import app
 import drive_storage
 
@@ -358,6 +359,79 @@ def manage_user(handler, payload):
     handler.send_json({'ok':True,**_public_state(_read_venue_state(venue_id))})
 
 
+
+
+_BACKDATED_TEMP_SOURCES = {
+    'manager-backfill', 'manager-backfill-status',
+    'paper-log', 'paper-log-status',
+    'temp-record-added', 'temperature-record',
+}
+
+def _is_backdated_temp_candidate(row):
+    if not isinstance(row, dict):
+        return False
+    if row.get('backfilled') is True:
+        return True
+    source=str(row.get('source') or '').strip().lower().replace('_','-')
+    return source in _BACKDATED_TEMP_SOURCES or 'backfill' in source or source.startswith('paper-log')
+
+def _sync_backdated_temperature_candidates(conn, venue_id, incoming_state, user):
+    rows=incoming_state.get('tempReadings', []) if isinstance(incoming_state,dict) else []
+    if not isinstance(rows,list):
+        return 0
+    appliances=incoming_state.get('appliances', []) if isinstance(incoming_state.get('appliances', []),list) else []
+    valid_apps={str(a.get('id')) for a in appliances if isinstance(a,dict) and a.get('id')}
+    inserted=0
+    with conn.cursor() as cur:
+        for row in rows:
+            if not _is_backdated_temp_candidate(row):
+                continue
+            row_id=str(row.get('id') or '').strip()
+            app_id=str(row.get('appId') or '').strip()
+            ts=str(row.get('ts') or '').strip()
+            if not row_id or app_id not in valid_apps or not ts:
+                raise ValueError('Back-dated temperature record is incomplete.')
+            try:
+                parsed=datetime.fromisoformat(ts.replace('Z','+00:00'))
+            except Exception as exc:
+                raise ValueError('Back-dated temperature timestamp is invalid.') from exc
+            period=str(row.get('period') or '').strip().upper()
+            if period not in ('AM','PM'):
+                period='AM' if parsed.hour < 12 else 'PM'
+            equipment_status=str(row.get('equipmentStatus') or 'reading').strip().lower()
+            if equipment_status not in ('reading','out_of_order','not_in_use','defrosting','awaiting_repair'):
+                raise ValueError('Back-dated equipment status is invalid.')
+            value=None
+            if equipment_status == 'reading':
+                try:
+                    value=float(row.get('value'))
+                except Exception as exc:
+                    raise ValueError('Back-dated temperature must be numeric.') from exc
+                if value < -60 or value > 120:
+                    raise ValueError('Back-dated temperature is outside the supported range.')
+            notes=str(row.get('notes') or '').strip()
+            if equipment_status in ('out_of_order','awaiting_repair') and not notes:
+                raise ValueError('A fault/action note is required for an out-of-order or awaiting-repair back-dated record.')
+            recorded_by=str(row.get('by') or user.get('username') or '')[:80]
+            source=str(row.get('source') or ('manager-backfill' if equipment_status=='reading' else 'manager-backfill-status'))[:80]
+            payload=dict(row)
+            payload.update({
+                'id':row_id,'appId':app_id,'value':value,'equipmentStatus':equipment_status,
+                'period':period,'by':recorded_by,'source':source,'notes':notes
+            })
+            cur.execute(
+                '''INSERT INTO tenant_temperature_readings
+                   (venue_id,id,app_id,value,ts,period,recorded_by,source,payload)
+                   VALUES(%s,%s,%s,%s,%s::timestamptz,%s,%s,%s,%s::jsonb)
+                   ON CONFLICT (venue_id,id) DO NOTHING
+                   RETURNING id''',
+                (venue_id,row_id,app_id,value,ts,period,recorded_by,source,
+                 json.dumps(payload,ensure_ascii=False,separators=(',',':')))
+            )
+            if cur.fetchone():
+                inserted += 1
+    return inserted
+
 def save_state(handler, payload):
     stored,user=handler.require_user()
     if not stored: return
@@ -374,6 +448,7 @@ def save_state(handler, payload):
                 if merged is None:
                     conn.rollback(); handler.send_json({'error':'Another user saved changes first. Latest shared data has been returned.','conflict':True,**_public_state(current)},409); return
                 incoming=merged; conflict_merge=True
+            backdated_inserted=_sync_backdated_temperature_candidates(conn,venue_id,incoming,user)
             incoming['tempReadings']=current['state'].get('tempReadings',[])
             incoming['audit']=_merge_rolling_audit(current['state'],incoming)
             incoming['users']=current['state'].get('users',[])
@@ -388,10 +463,10 @@ def save_state(handler, payload):
                 cur.execute('UPDATE venue_states SET state=%s::jsonb,revision=%s,updated_at=NOW(),updated_by=%s WHERE venue_id=%s',
                             (raw,revision,user['username'],venue_id))
                 cur.execute('INSERT INTO server_audit(username,action,revision,details) VALUES(%s,%s,%s,%s::jsonb)',
-                            (user['username'],'save_state',revision,json.dumps({'venueId':venue_id,'reason':str(payload.get('reason','client save')),'conflict_append_merge':conflict_merge})))
+                            (user['username'],'save_state',revision,json.dumps({'venueId':venue_id,'reason':str(payload.get('reason','client save')),'conflict_append_merge':conflict_merge,'backdated_temperature_inserted':backdated_inserted})))
             conn.commit()
         except Exception:
             conn.rollback(); raise
     try: drive_storage.maybe_daily_backup(incoming,revision)
     except Exception as exc: print('Supabase Storage daily backup skipped:',exc)
-    handler.send_json({'ok':True,'revision':revision,'conflictAppendMerge':conflict_merge})
+    handler.send_json({'ok':True,'revision':revision,'conflictAppendMerge':conflict_merge,'backdatedTemperatureInserted':backdated_inserted})
