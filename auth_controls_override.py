@@ -9,11 +9,46 @@ _TENANT = contextvars.ContextVar('cdc_tenant_id', default=None)
 _LEGACY_READ_STATE = app.read_state
 
 
+def _authoritative_temperature_rows(venue_id):
+    if not venue_id:
+        return None
+    try:
+        with app.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute('''SELECT id,app_id,value,ts,period,recorded_by,source,payload
+                               FROM tenant_temperature_readings
+                               WHERE venue_id=%s ORDER BY ts ASC,id ASC''',(venue_id,))
+                rows=cur.fetchall()
+        out=[]
+        for row in rows:
+            payload=row.get('payload') if isinstance(row.get('payload'),dict) else {}
+            item=dict(payload)
+            value=row.get('value')
+            item.update({
+                'id':row['id'],
+                'appId':row['app_id'],
+                'value':float(value) if value is not None else None,
+                'ts':row['ts'].isoformat() if hasattr(row['ts'],'isoformat') else str(row['ts']),
+                'period':row['period'],
+                'by':row['recorded_by'],
+                'source':row['source'],
+            })
+            out.append(item)
+        return out
+    except Exception:
+        # During first boot the normalized table may not exist yet. In that
+        # narrow case, keep the state copy rather than breaking sign-in.
+        return None
+
+
 def _public_state(stored):
     if not stored:
         return stored
     out = dict(stored)
     state = json.loads(json.dumps(stored['state']))
+    authoritative_temps=_authoritative_temperature_rows(stored.get('tenantId'))
+    if authoritative_temps is not None:
+        state['tempReadings']=authoritative_temps
     for user in state.get('users', []):
         user.pop('password', None)
     out['state'] = state
