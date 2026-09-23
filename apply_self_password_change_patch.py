@@ -949,3 +949,57 @@ final_sd = safe_delete_target.read_text(encoding='utf-8')
 if "api('/api/temperature-round/correct'" not in final_sd or "Not deleted — reconnect and try again" not in final_sd:
     raise SystemExit('Temperature delete reliability guard did not install')
 print('Temperature deletes now require online atomic server confirmation; offline deletes stay unsaved and visible')
+
+
+# 2026-09-24 Authoritative temperature dashboard.
+# The Pass charts must use the normalized temperature table, not a stale state
+# snapshot. Also replace the hard-wired single Fridge 2 trend with a selectable,
+# status-aware 14-day chart.
+auth_temp_src = Path('authoritative_temperature_dashboard.js')
+if not auth_temp_src.exists():
+    raise SystemExit('Missing authoritative temperature dashboard runtime')
+auth_temp_target = app / 'authoritative_temperature_dashboard.js'
+auth_temp_target.write_bytes(auth_temp_src.read_bytes())
+
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+auth_temp_route = "    '/authoritative_temperature_dashboard.js',\n"
+if auth_temp_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding authoritative temperature dashboard')
+    srv = srv.replace(runtime_marker, runtime_marker + auth_temp_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+runtime_loader = app / 'runtime_loader.js'
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for authoritative temperature dashboard')
+body = m.group(2)
+for quoted in ("'authoritative_temperature_dashboard.js'", '"authoritative_temperature_dashboard.js"'):
+    body = body.replace(",\n    " + quoted, "")
+    body = body.replace(quoted + ",\n", "")
+body = body.rstrip() + ",\n    'authoritative_temperature_dashboard.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260924-tempdash1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
+    guard = app / guard_name
+    if guard.exists():
+        gt = guard.read_text(encoding='utf-8')
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260924-tempdash1', gt)
+        guard.write_text(gt, encoding='utf-8')
+
+# Final build checks: state hydration must come from the normalized table and
+# the dashboard runtime must be served exactly once.
+auth_final = (app / 'auth_controls.py').read_text(encoding='utf-8')
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+if '_authoritative_temperature_rows' not in auth_final or "state['tempReadings']=authoritative_temps" not in auth_final:
+    raise SystemExit('Authoritative temperature state hydration missing')
+if srv_check.count("'/authoritative_temperature_dashboard.js'") + srv_check.count('"/authoritative_temperature_dashboard.js"') != 1:
+    raise SystemExit('Authoritative temperature dashboard route not installed exactly once')
+if rt_check.count("'authoritative_temperature_dashboard.js'") + rt_check.count('"authoritative_temperature_dashboard.js"') != 1:
+    raise SystemExit('Authoritative temperature dashboard module not installed exactly once')
+print('The Pass temperature charts now use authoritative saved readings with selectable status-aware trends')
