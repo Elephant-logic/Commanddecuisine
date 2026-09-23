@@ -22,6 +22,12 @@
     try { return String(ME && ME.username || '').toLowerCase(); }
     catch (e) { return ''; }
   }
+  function cleanUsername(v) {
+    return String(v || '').trim().toLowerCase().replace(/^@+/, '');
+  }
+  function validUsername(v) {
+    return /^[a-z0-9._-]{3,40}$/.test(String(v || ''));
+  }
 
   function ensureStyle() {
     if (document.getElementById('cdc-team-account-style')) return;
@@ -117,25 +123,30 @@
       var form = document.createElement('form'); form.className = 'cdc-team-form';
       var name = field(form, 'Name', input('text','name','', 'name')); name.required = true;
       var username = field(form, 'Username', input('text','username','', 'username')); username.required = true; username.autocapitalize = 'none'; username.spellcheck = false;
+      var userHint = document.createElement('div'); userHint.className = 'hint'; userHint.textContent = 'Username: 3–40 letters/numbers, dot, dash or underscore. You can type @ at the start — it will be removed automatically.'; form.appendChild(userHint);
       var job = field(form, 'Job title', input('text','jobTitle','', 'organization-title'));
       var role = roleSelect('staff'); field(form, 'Access level', role);
       var pw = field(form, 'Temporary password', input('password','password','', 'new-password')); pw.required = true; pw.minLength = 10;
       var confirm = field(form, 'Confirm temporary password', input('password','confirm','', 'new-password')); confirm.required = true; confirm.minLength = 10;
-      var hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = 'At least 10 characters. Give this temporary password to the new staff member so they can sign in with their username.'; form.appendChild(hint);
+      var hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = 'Password: any characters are allowed; it just needs to be at least 10 characters. Give it to the new staff member with their username.'; form.appendChild(hint);
       var status = document.createElement('div'); status.className = 'status'; form.appendChild(status);
       var save = modalButtons(form, close, 'Create person & login');
       form.onsubmit = async function (e) {
         e.preventDefault(); status.className = 'status';
-        var n = name.value.trim(), u = username.value.trim().toLowerCase(), p = pw.value;
+        var n = name.value.trim(), u = cleanUsername(username.value), p = pw.value;
+        username.value = u;
         if (!n || !u) { status.textContent = 'Name and username are required.'; status.classList.add('bad'); return; }
-        if (p.length < 10) { status.textContent = 'Temporary password must be at least 10 characters.'; status.classList.add('bad'); return; }
+        if (!validUsername(u)) { status.textContent = 'The username is the problem — not the password. Use 3–40 letters/numbers plus dot, dash or underscore, with no spaces.'; status.classList.add('bad'); username.focus(); return; }
+        if (p.length < 10) { status.textContent = 'Password is too short. It can use any characters, but must be at least 10 characters.'; status.classList.add('bad'); return; }
         if (p !== confirm.value) { status.textContent = 'Passwords do not match.'; status.classList.add('bad'); return; }
         save.disabled = true; status.textContent = 'Creating login…';
         try {
           await request('/api/users/create', {name:n, username:u, jobTitle:job.value.trim(), role:role.value, password:p});
           close(); await refresh(); notify('Person added — they can now sign in as @' + u, 'ok');
         } catch (err) {
-          status.textContent = err.message || 'Could not create login.'; status.classList.add('bad'); save.disabled = false;
+          var msg = err.message || 'Could not create login.';
+          if (/Username must be 3/i.test(msg)) msg = 'The username is the problem — not the password. Use 3–40 letters/numbers plus dot, dash or underscore, with no spaces.';
+          status.textContent = msg; status.classList.add('bad'); save.disabled = false;
         }
       };
       sheet.appendChild(form); setTimeout(function(){name.focus();},0);
@@ -188,6 +199,19 @@
     });
   }
 
+  async function deletePerson(user) {
+    if (!user || !user.username) return;
+    var label = user.name || user.username;
+    if (!window.confirm('Delete ' + label + ' from this venue?\n\nThey will no longer be able to sign in. Historic kitchen records and audit entries will stay in place.')) return;
+    try {
+      await request('/api/users/manage', {username:user.username, delete:true});
+      await refresh();
+      notify(label + ' deleted from Team', 'ok');
+    } catch (err) {
+      notify(err.message || 'Could not delete this person.', 'bad');
+    }
+  }
+
   function button(label, cls, fn) {
     var b = document.createElement('button'); b.type = 'button'; b.className = cls || 'btn ghost'; b.textContent = label; b.onclick = fn; return b;
   }
@@ -220,6 +244,7 @@
         actions.appendChild(button('Edit', 'btn ghost', function(){ editPerson(user); }));
         if (String(user.username).toLowerCase() !== selfUsername()) {
           actions.appendChild(button('Set / reset password', 'btn ghost', function(){ setPassword(user); }));
+          actions.appendChild(button('Delete', 'btn danger', function(){ deletePerson(user); }));
         }
       }
       row.append(person, actions); card.appendChild(row);
@@ -233,6 +258,6 @@
   boot(function () {
     VIEWS.team = renderTeam;
     if (typeof rerender === 'function') rerender();
-    console.info('[Command de Cuisine] Team login provisioning active');
+    console.info('[Command de Cuisine] Team login provisioning active: delete + clear username/password validation');
   });
 })();
