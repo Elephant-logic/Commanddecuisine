@@ -836,18 +836,16 @@ safe_delete_target = app / 'safe_delete_patch.js'
 if not safe_delete_target.exists():
     raise SystemExit('safe_delete_patch.js missing while installing temperature delete guard')
 sd = safe_delete_target.read_text(encoding='utf-8')
-old_delete_flow = """    }, function (reason) {
-      b.__cdcConfirmed = true;
-      try { b.click(); } catch (e) { b.__cdcConfirmed = false; return; }
-      setTimeout(function () {
-        var undoOps = [];
-        try { undoOps = buildUndoOps(snapshot, STATE); } catch (e) {}
-        if (record && typeof audit === 'function') {
-          try { audit('record_voided', what + (reason ? ' — ' + reason : '')); save('audit void'); } catch (e) {}
-        }
-        showUndo(undoOps, record ? 'record' : (what.length > 24 ? 'item' : what), record);
-      }, 30);
-    });"""
+delete_flow_pattern = re.compile(
+    r"    \}, function \(reason\) \{\n(?P<body>.*?)\n    \}\);\n  \}, true\);",
+    re.S,
+)
+delete_matches = [
+    m for m in delete_flow_pattern.finditer(sd)
+    if 'b.__cdcConfirmed' in m.group('body') and 'buildUndoOps' in m.group('body')
+]
+if len(delete_matches) != 1:
+    raise SystemExit(f'Could not uniquely locate safe delete callback: {len(delete_matches)} matches')
 new_delete_flow = """    }, function (reason) {
       var tempRoute = record && route() === 'temps';
       var serverBackedTemps = tempRoute && typeof serverMode !== 'undefined' && !!serverMode;
@@ -903,10 +901,10 @@ new_delete_flow = """    }, function (reason) {
         }
         showUndo(undoOps, record ? 'record' : (what.length > 24 ? 'item' : what), record);
       }, 30);
-    });"""
-if old_delete_flow not in sd:
-    raise SystemExit('Safe delete flow marker not found for temperature reliability guard')
-sd = sd.replace(old_delete_flow, new_delete_flow, 1)
+    });
+  }, true);"""
+m = delete_matches[0]
+sd = sd[:m.start()] + new_delete_flow + sd[m.end():]
 safe_delete_target.write_text(sd, encoding='utf-8')
 
 # Force kitchen devices to fetch the guarded delete flow.
