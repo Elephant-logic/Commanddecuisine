@@ -798,3 +798,20 @@ if rt_check.count("'team_login_accounts.js'") + rt_check.count('"team_login_acco
 if 'account_exists_here=False; account_taken_elsewhere=False' not in auth_check or 'existing_profile=next((u for u in state.setdefault' not in auth_check:
     raise SystemExit('Team login backend repair did not install')
 print('Applied Team login repair: Add person requires password; existing profiles can be provisioned/reset safely')
+
+# Force the repaired Team login UI to load directly after all other page scripts.
+# This avoids stale/runtime-loader ordering leaving the older profile-only Team view active.
+index = app / 'index.html'
+team_html = index.read_text(encoding='utf-8')
+team_html = re.sub(r'\s*<script[^>]+src=["\']/?team_login_accounts\.js(?:\?[^"\']*)?["\'][^>]*></script>\s*', '\n', team_html, flags=re.I)
+team_tag = '<script src="/team_login_accounts.js?v=20260923-teamlogin2"></script>'
+if '</body>' not in team_html:
+    raise SystemExit('Could not locate </body> while installing direct Team login UI')
+team_html = team_html.replace('</body>', team_tag + '\n</body>', 1)
+index.write_text(team_html, encoding='utf-8')
+
+final_team_html = index.read_text(encoding='utf-8')
+if final_team_html.count(team_tag) != 1:
+    raise SystemExit('Direct Team login UI tag not installed exactly once')
+print('Forced Team login UI to load directly after other page scripts')
+
