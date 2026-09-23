@@ -826,3 +826,103 @@ round_fix = Path('apply_temperature_round_correction_patch.py')
 if not round_fix.exists():
     raise SystemExit('Missing temperature round correction patch')
 exec(compile(round_fix.read_text(encoding='utf-8'), str(round_fix), 'exec'), {'__name__':'__main__'})
+
+
+# 2026-09-23 Temperature delete reliability guard.
+# Temperature records are server-backed safety records. Do not allow the generic
+# local delete/undo layer to claim success while offline or leave the database
+# row behind. Route temperature voids through the atomic correction endpoint.
+safe_delete_target = app / 'safe_delete_patch.js'
+if not safe_delete_target.exists():
+    raise SystemExit('safe_delete_patch.js missing while installing temperature delete guard')
+sd = safe_delete_target.read_text(encoding='utf-8')
+old_delete_flow = """    }, function (reason) {
+      b.__cdcConfirmed = true;
+      try { b.click(); } catch (e) { b.__cdcConfirmed = false; return; }
+      setTimeout(function () {
+        var undoOps = [];
+        try { undoOps = buildUndoOps(snapshot, STATE); } catch (e) {}
+        if (record && typeof audit === 'function') {
+          try { audit('record_voided', what + (reason ? ' — ' + reason : '')); save('audit void'); } catch (e) {}
+        }
+        showUndo(undoOps, record ? 'record' : (what.length > 24 ? 'item' : what), record);
+      }, 30);
+    });"""
+new_delete_flow = """    }, function (reason) {
+      var tempRoute = record && route() === 'temps';
+      var serverBackedTemps = tempRoute && typeof serverMode !== 'undefined' && !!serverMode;
+      if (serverBackedTemps && (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        if (typeof toast === 'function') toast('Not deleted — reconnect and try again', 'bad');
+        return;
+      }
+
+      b.__cdcConfirmed = true;
+      try { b.click(); } catch (e) { b.__cdcConfirmed = false; return; }
+
+      setTimeout(async function () {
+        var undoOps = [];
+        try { undoOps = buildUndoOps(snapshot, STATE); } catch (e) {}
+
+        var beforeTemps = snapshot && Array.isArray(snapshot.tempReadings) ? snapshot.tempReadings : [];
+        var afterTemps = (typeof STATE !== 'undefined' && Array.isArray(STATE.tempReadings)) ? STATE.tempReadings : [];
+        var afterIds = new Set(afterTemps.map(function (r) { return r && r.id != null ? String(r.id) : ''; }));
+        var removedTemps = beforeTemps.filter(function (r) {
+          return r && r.id != null && !afterIds.has(String(r.id));
+        });
+
+        if (serverBackedTemps && removedTemps.length) {
+          if (typeof api !== 'function') {
+            try { applyUndoOps(undoOps); rerender(); } catch (e) {}
+            if (typeof toast === 'function') toast('Not deleted — server confirmation is unavailable', 'bad');
+            return;
+          }
+          try {
+            var ops = removedTemps.map(function (r) {
+              return { appId:String(r.appId || ''), removeIds:[String(r.id)], record:null };
+            });
+            var res = await api('/api/temperature-round/correct', {
+              method:'POST',
+              body:JSON.stringify({ operations:ops, reason:reason || 'temperature record voided' })
+            });
+            if (!res || res.ok !== true) throw new Error((res && res.error) || 'Temperature delete was not confirmed');
+            if (typeof audit === 'function') {
+              try { audit('record_voided', what + (reason ? ' — ' + reason : '')); save('temperature record void'); } catch (e) {}
+            }
+            if (typeof rerender === 'function') rerender();
+            if (typeof toast === 'function') toast('Temperature record deleted', 'ok');
+          } catch (err) {
+            try { applyUndoOps(undoOps); rerender(); } catch (e) {}
+            if (typeof toast === 'function') toast('Not deleted — reconnect and try again', 'bad');
+            console.error('temperature delete not confirmed', err);
+          }
+          return;
+        }
+
+        if (record && typeof audit === 'function') {
+          try { audit('record_voided', what + (reason ? ' — ' + reason : '')); save('audit void'); } catch (e) {}
+        }
+        showUndo(undoOps, record ? 'record' : (what.length > 24 ? 'item' : what), record);
+      }, 30);
+    });"""
+if old_delete_flow not in sd:
+    raise SystemExit('Safe delete flow marker not found for temperature reliability guard')
+sd = sd.replace(old_delete_flow, new_delete_flow, 1)
+safe_delete_target.write_text(sd, encoding='utf-8')
+
+# Force kitchen devices to fetch the guarded delete flow.
+runtime_loader = app / 'runtime_loader.js'
+if runtime_loader.exists():
+    rt = runtime_loader.read_text(encoding='utf-8')
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260923-tempdelete1', rt)
+    runtime_loader.write_text(rt, encoding='utf-8')
+for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
+    guard = app / guard_name
+    if guard.exists():
+        gt = guard.read_text(encoding='utf-8')
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260923-tempdelete1', gt)
+        guard.write_text(gt, encoding='utf-8')
+
+final_sd = safe_delete_target.read_text(encoding='utf-8')
+if "api('/api/temperature-round/correct'" not in final_sd or "Not deleted — reconnect and try again" not in final_sd:
+    raise SystemExit('Temperature delete reliability guard did not install')
+print('Temperature deletes now require online atomic server confirmation; offline deletes stay unsaved and visible')
