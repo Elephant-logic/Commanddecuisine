@@ -826,16 +826,3 @@ round_fix = Path('apply_temperature_round_correction_patch.py')
 if not round_fix.exists():
     raise SystemExit('Missing temperature round correction patch')
 exec(compile(round_fix.read_text(encoding='utf-8'), str(round_fix), 'exec'), {'__name__':'__main__'})
-
-
-# TEMP diagnostic: show the final missed-round save code after all overlays so
-# the back-date UI can be repaired against the code that actually ships.
-try:
-    _fx = (app / 'kitchen_fixes_20260810.js').read_text(encoding='utf-8')
-    for _needle in ('Enter at least one record or equipment status','Already recorded','Save records'):
-        _i = _fx.find(_needle)
-        if _i >= 0:
-            print('TEMP BACKFILL DIAGNOSTIC', _needle)
-            print(_fx[max(0,_i-1800):min(len(_fx),_i+4200)])
-except Exception as _exc:
-    print('TEMP BACKFILL DIAGNOSTIC FAILED', _exc)
