@@ -817,3 +817,12 @@ if final_team_html.count(team_tag) != 1:
     raise SystemExit('Direct Team login UI tag not installed exactly once')
 print('Forced Team login UI to load directly after other page scripts')
 
+
+
+# 2026-09-23 auditable historic temperature round correction.
+# Runs last so every earlier temperature/history overlay feeds one authoritative
+# correction workflow. It does not invent or rewrite readings automatically.
+round_fix = Path('apply_temperature_round_correction_patch.py')
+if not round_fix.exists():
+    raise SystemExit('Missing temperature round correction patch')
+exec(compile(round_fix.read_text(encoding='utf-8'), str(round_fix), 'exec'), {'__name__':'__main__'})
