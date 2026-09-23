@@ -186,7 +186,7 @@ new_dashboard = r'''  const wk=el("div",{class:"card"});
       detail='Since '+fmtDate(dashTempDay(since))+'  -  last confirmed '+fmtDate(dashTempDay(r))+' '+dashTempPeriod(r).toUpperCase();
     }
     const d=el("div",{class:"docket "+cls,style:"margin-bottom:7px"});
-    d.innerHTML=`<div class="dk-ic">${icon(a.type==='freezer'?'freeze':'temp')}</div><div style="flex:1"><div class="dk-t">${esc(a.name)}</div><div class="dk-s">${esc(detail)}</div></div><div style="text-align:right;font-weight:800;white-space:nowrap">${esc(main)}</div>`;
+    d.innerHTML=`<div class="dk-ic">${icon('temp')}</div><div style="flex:1"><div class="dk-t">${esc(a.name)}</div><div class="dk-s">${esc(detail)}</div></div><div style="text-align:right;font-weight:800;white-space:nowrap">${esc(main)}</div>`;
     statusList.append(d);
   });
   wk.append(statusList);
