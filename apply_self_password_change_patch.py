@@ -874,10 +874,8 @@ if len(delete_matches) != 1:
 new_delete_flow = """    }, function (reason) {
       var tempRoute = record && route() === 'temps';
       var serverBackedTemps = tempRoute && typeof serverMode !== 'undefined' && !!serverMode;
-      if (serverBackedTemps && (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-        if (typeof toast === 'function') toast('Not deleted — reconnect and try again', 'bad');
-        return;
-      }
+      // Do not trust navigator.onLine on mobile; attempt the real server call
+      // and let the HTTP response decide whether the device is connected.
 
       b.__cdcConfirmed = true;
       try { b.click(); } catch (e) { b.__cdcConfirmed = false; return; }
@@ -894,28 +892,37 @@ new_delete_flow = """    }, function (reason) {
         });
 
         if (serverBackedTemps && removedTemps.length) {
-          if (typeof api !== 'function') {
-            try { applyUndoOps(undoOps); rerender(); } catch (e) {}
-            if (typeof toast === 'function') toast('Not deleted — server confirmation is unavailable', 'bad');
-            return;
-          }
           try {
             var ops = removedTemps.map(function (r) {
               return { appId:String(r.appId || ''), removeIds:[String(r.id)], record:null };
             });
-            var res = await api('/api/temperature-round/correct', {
+            var response = await fetch('/api/temperature-round/correct', {
               method:'POST',
+              credentials:'same-origin',
+              cache:'no-store',
+              headers:{'Content-Type':'application/json','Accept':'application/json'},
               body:JSON.stringify({ operations:ops, reason:reason || 'temperature record voided' })
             });
-            if (!res || res.ok !== true) throw new Error((res && res.error) || 'Temperature delete was not confirmed');
-            if (typeof audit === 'function') {
-              try { audit('record_voided', what + (reason ? ' — ' + reason : '')); save('temperature record void'); } catch (e) {}
-            }
+            var res = await response.json().catch(function(){ return {}; });
+            if (!response.ok || !res || res.ok !== true) throw new Error((res && res.error) || 'Temperature delete was not confirmed');
+
+            // Refresh from the authoritative temperature table. Do not call the
+            // generic shared-state save/offline queue after a confirmed delete.
+            try {
+              var verifyResponse = await fetch('/api/temperature-readings', {
+                credentials:'same-origin', cache:'no-store', headers:{'Accept':'application/json'}
+              });
+              var verify = await verifyResponse.json().catch(function(){ return {}; });
+              if (verifyResponse.ok && verify && verify.ok === true && Array.isArray(verify.readings) && typeof STATE !== 'undefined') {
+                STATE.tempReadings = verify.readings.slice();
+              }
+            } catch (_refreshErr) {}
+
             if (typeof rerender === 'function') rerender();
             if (typeof toast === 'function') toast('Temperature record deleted', 'ok');
           } catch (err) {
             try { applyUndoOps(undoOps); rerender(); } catch (e) {}
-            if (typeof toast === 'function') toast('Not deleted — reconnect and try again', 'bad');
+            if (typeof toast === 'function') toast('Not deleted — server could not confirm it. Check connection and try again', 'bad');
             console.error('temperature delete not confirmed', err);
           }
           return;
@@ -936,19 +943,19 @@ safe_delete_target.write_text(sd, encoding='utf-8')
 runtime_loader = app / 'runtime_loader.js'
 if runtime_loader.exists():
     rt = runtime_loader.read_text(encoding='utf-8')
-    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260923-tempdelete1', rt)
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260924-tempdelete2', rt)
     runtime_loader.write_text(rt, encoding='utf-8')
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard = app / guard_name
     if guard.exists():
         gt = guard.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260923-tempdelete1', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260924-tempdelete2', gt)
         guard.write_text(gt, encoding='utf-8')
 
 final_sd = safe_delete_target.read_text(encoding='utf-8')
-if "api('/api/temperature-round/correct'" not in final_sd or "Not deleted — reconnect and try again" not in final_sd:
+if "fetch('/api/temperature-round/correct'" not in final_sd or "server could not confirm it" not in final_sd:
     raise SystemExit('Temperature delete reliability guard did not install')
-print('Temperature deletes now require online atomic server confirmation; offline deletes stay unsaved and visible')
+print('Temperature deletes now use direct server confirmation and do not trust navigator.onLine')
 
 
 # 2026-09-24 Authoritative temperature dashboard.
@@ -981,14 +988,14 @@ for quoted in ("'authoritative_temperature_dashboard.js'", '"authoritative_tempe
     body = body.replace(quoted + ",\n", "")
 body = body.rstrip() + ",\n    'authoritative_temperature_dashboard.js'"
 rt = rt[:m.start(2)] + body + rt[m.end(2):]
-rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260924-tempdash1', rt)
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260924-tempdash2', rt)
 runtime_loader.write_text(rt, encoding='utf-8')
 
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard = app / guard_name
     if guard.exists():
         gt = guard.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260924-tempdash1', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260924-tempdash2', gt)
         guard.write_text(gt, encoding='utf-8')
 
 # Final build checks: state hydration must come from the normalized table and
