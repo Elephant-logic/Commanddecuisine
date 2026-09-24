@@ -282,8 +282,15 @@ new_func = r'''  function backfillRound(date,period){
         try{
           let removedIds=[],savedRows=[];
           if(serverMode){
-            const res=await api('/api/temperature-round/correct',{method:'POST',body:JSON.stringify({operations,reason:'temperature round updated'})});
-            if(!res||res.ok!==true)throw new Error((res&&res.error)||'Temperature update failed');
+            const response=await fetch('/api/temperature-round/correct',{
+              method:'POST',
+              credentials:'same-origin',
+              cache:'no-store',
+              headers:{'Content-Type':'application/json','Accept':'application/json'},
+              body:JSON.stringify({operations,reason:'temperature round updated'})
+            });
+            const res=await response.json().catch(()=>({}));
+            if(!response.ok||!res||res.ok!==true)throw new Error((res&&res.error)||'Temperature update failed');
             removedIds=Array.isArray(res.removedIds)?res.removedIds:[];
             savedRows=Array.isArray(res.readings)?res.readings:[];
           }else{
@@ -295,9 +302,24 @@ new_func = r'''  function backfillRound(date,period){
           STATE.tempReadings=(STATE.tempReadings||[]).filter(r=>!removed.has(r.id));
           savedRows.forEach(r=>{if(!STATE.tempReadings.some(x=>x.id===r.id))STATE.tempReadings.push(r);});
 
-          if(typeof audit==='function')audit('temp_record_updated',ds+' '+p.toUpperCase()+' · '+operations.length+' temperature record change'+(operations.length===1?'':'s'));
-          if(typeof save==='function')save('temperature round update');
-          if(typeof persist==='function')await persist('temperature round update');
+          if(serverMode){
+            // The atomic temperature endpoint is the save. Do not call the old
+            // shared-state/offline queue afterwards, because it can falsely say
+            // "will sync when online" even after the database commit succeeded.
+            try{
+              const verifyResponse=await fetch('/api/temperature-readings',{
+                credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json'}
+              });
+              const verify=await verifyResponse.json().catch(()=>({}));
+              if(verifyResponse.ok&&verify&&verify.ok===true&&Array.isArray(verify.readings)){
+                STATE.tempReadings=verify.readings.slice();
+              }
+            }catch(_refreshErr){}
+          }else{
+            if(typeof audit==='function')audit('temp_record_updated',ds+' '+p.toUpperCase()+' · '+operations.length+' temperature record change'+(operations.length===1?'':'s'));
+            if(typeof save==='function')save('temperature round update');
+            if(typeof persist==='function')await persist('temperature round update');
+          }
 
           m.close();
           toast(operations.length+' temperature record change'+(operations.length===1?'':'s')+' saved','ok');
@@ -329,15 +351,15 @@ if gap.exists():
 # Cache-bust both historical temperature scripts in every place the server or
 # HTML may reference them.
 sv = server.read_text(encoding='utf-8')
-sv = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260923-roundfix2', sv)
-sv = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260923-roundfix2', sv)
+sv = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260924-roundfix3', sv)
+sv = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260924-roundfix3', sv)
 server.write_text(sv, encoding='utf-8')
 
 index = app / 'index.html'
 if index.exists():
     ht = index.read_text(encoding='utf-8')
-    ht = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260923-roundfix2', ht)
-    ht = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260923-roundfix2', ht)
+    ht = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260924-roundfix3', ht)
+    ht = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260924-roundfix3', ht)
     index.write_text(ht, encoding='utf-8')
 
 # The app's runtime loader appends its own cache key to modules. Bust that too;
@@ -346,16 +368,16 @@ if index.exists():
 runtime_loader = app / 'runtime_loader.js'
 if runtime_loader.exists():
     rt = runtime_loader.read_text(encoding='utf-8')
-    rt = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260923-roundfix2', rt)
-    rt = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260923-roundfix2', rt)
-    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260923-roundfix2', rt)
+    rt = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260924-roundfix3', rt)
+    rt = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260924-roundfix3', rt)
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260924-roundfix3', rt)
     runtime_loader.write_text(rt, encoding='utf-8')
 
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard = app / guard_name
     if guard.exists():
         gt = guard.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260923-roundfix2', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260924-roundfix3', gt)
         guard.write_text(gt, encoding='utf-8')
 
 # Build-time checks: fail rather than deploy a UI that can appear editable but
@@ -367,8 +389,8 @@ if 'def correct_round(handler, payload):' not in final_store:
     raise SystemExit('Temperature round correction backend missing')
 if "path == '/api/temperature-round/correct'" not in final_server:
     raise SystemExit('Temperature round correction route missing')
-if "modal({title:'Update temperature round'" not in final_fixes or "api('/api/temperature-round/correct'" not in final_fixes:
+if "modal({title:'Update temperature round'" not in final_fixes or "fetch('/api/temperature-round/correct'" not in final_fixes:
     raise SystemExit('Temperature round correction UI missing')
-if runtime_loader.exists() and '?runtime=20260923-roundfix2' not in runtime_loader.read_text(encoding='utf-8'):
+if runtime_loader.exists() and '?runtime=20260924-roundfix3' not in runtime_loader.read_text(encoding='utf-8'):
     raise SystemExit('Temperature round correction runtime cache-bust missing')
 print('Temperature historic rounds are editable/correctable, atomically saved and cache-busted')
