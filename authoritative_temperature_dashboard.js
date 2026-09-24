@@ -54,19 +54,43 @@
     var n=Number(v);
     return Number.isFinite(n)?(Math.round(n*10)/10).toFixed(1).replace(/\.0$/,''):'—';
   }
+  function signedReadingDisplay(r){
+    if(!r) return '—';
+    if(hasValue(r)) return Number(r.value).toFixed(1)+'°C';
+    var s=statusOf(r);
+    return STATUS_LABEL[s] || (r.statusLabel ? String(r.statusLabel) : 'No temperature');
+  }
+  function tempSignature(rows){
+    return (rows||[]).map(function(r){
+      return [r&&r.id,r&&r.value,statusOf(r),r&&r.ts,r&&r.period].join('|');
+    }).join('~');
+  }
 
   async function fetchReadings(force){
     if(cache.loading) return cache.readings;
     if(!force && cache.readings.length && Date.now()-cache.fetchedAt<30000) return cache.readings;
-    if(typeof navigator!=='undefined' && navigator.onLine===false) return cache.readings;
+    // navigator.onLine is advisory and is wrong on some mobile browsers.
+    // Try the real endpoint and let the HTTP result decide whether we are online.
     cache.loading=true;
     try{
       var res=await fetch('/api/temperature-readings',{credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json'}});
       var data=await res.json().catch(function(){return {};});
       if(!res.ok || !data || data.ok!==true || !Array.isArray(data.readings)) throw new Error((data&&data.error)||'Temperature data unavailable');
+      var before='';
+      try{ before=tempSignature(window.STATE&&Array.isArray(STATE.tempReadings)?STATE.tempReadings:[]); }catch(e){}
       cache.readings=data.readings.slice().sort(function(a,b){return new Date(a.ts)-new Date(b.ts);});
       cache.fetchedAt=Date.now();
-      try{ if(window.STATE && Array.isArray(STATE.tempReadings)) STATE.tempReadings=cache.readings.slice(); }catch(e){}
+      try{
+        if(window.STATE && Array.isArray(STATE.tempReadings)){
+          STATE.tempReadings=cache.readings.slice();
+          var after=tempSignature(STATE.tempReadings);
+          if(after!==before && typeof rerender==='function'){
+            var current='';
+            try{ current=typeof ROUTE!=='undefined'?String(ROUTE):''; }catch(e){}
+            if(current==='temps'||current==='history') setTimeout(function(){ try{rerender();}catch(e){} },0);
+          }
+        }
+      }catch(e){}
       return cache.readings;
     }catch(err){
       console.error('[Command de Cuisine] authoritative temperature dashboard fetch failed',err);
@@ -273,13 +297,14 @@
 
   function start(){
     installCss();
+    try{ window.tempReadingDisplay=signedReadingDisplay; }catch(e){}
     refresh(true);
     new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});
     window.addEventListener('focus',function(){refresh(true);});
     window.addEventListener('online',function(){refresh(true);});
     document.addEventListener('visibilitychange',function(){if(!document.hidden)refresh(true);});
     window.CDCTemperatureDashboard={refresh:function(){return refresh(true);},readings:function(){return cache.readings.slice();}};
-    console.info('[Command de Cuisine] Authoritative server-backed temperature dashboard active');
+    console.info('[Command de Cuisine] Authoritative signed temperature records and server-backed dashboard active');
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true}); else start();
 })();
