@@ -57,10 +57,14 @@ function dashTempOfflineAtSlot(appId,ds,period){
   return !!(latest&&!dashTempHasValue(latest)&&DASH_TEMP_OFFLINE_STATUSES.has(dashTempStatusKey(latest)));
 }
 function dashTempDuePeriods(ds){
-  const today=todayISO();
+  // Use the browser's local calendar date, not UTC ISO date. Around midnight
+  // local time, todayISO() can still be yesterday in UTC and wrongly blank
+  // yesterday's completed round on the dashboard.
+  const now=new Date();
+  const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
   if(ds<today)return ['am','pm'];
   if(ds>today)return [];
-  const h=(new Date()).getHours();
+  const h=now.getHours();
   if(h>=18)return ['am','pm'];
   if(h>=11)return ['am'];
   return [];
@@ -233,7 +237,7 @@ p.write_text(text, encoding='utf-8')
 index = Path('app/index.html')
 if index.exists():
     html = index.read_text(encoding='utf-8')
-    html, n = re.subn(r'main_app\.js\?v=[^"\']+', 'main_app.js?v=20260924-tempdashboard1', html, count=1)
+    html, n = re.subn(r'main_app\.js\?v=[^"\']+', 'main_app.js?v=20260924-tempdashboard2', html, count=1)
     if n != 1:
         raise SystemExit('main_app.js cache-bust marker not found')
     index.write_text(html, encoding='utf-8')
