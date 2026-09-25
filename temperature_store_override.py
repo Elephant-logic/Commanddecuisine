@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import app
 
 
@@ -39,6 +40,49 @@ def _public_row(row):
     return out
 
 
+
+_LONDON = ZoneInfo('Europe/London')
+
+
+def _parse_dt(value):
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value or '').replace('Z','+00:00'))
+    except Exception:
+        return None
+
+
+def _slot_day(value):
+    dt=_parse_dt(value)
+    if not dt:
+        return str(value or '')[:10]
+    if dt.tzinfo is None:
+        return dt.date().isoformat()
+    return dt.astimezone(_LONDON).date().isoformat()
+
+
+def _winner_key(item):
+    entered=_parse_dt(item.get('enteredAt'))
+    ts=_parse_dt(item.get('ts'))
+    return (
+        entered.timestamp() if entered else float('-inf'),
+        ts.timestamp() if ts else float('-inf'),
+        str(item.get('id') or ''),
+    )
+
+
+def _current_rows(rows):
+    current={}
+    for raw in rows:
+        item=_public_row(raw) if 'app_id' in raw else dict(raw)
+        key=(str(item.get('appId') or ''), _slot_day(item.get('ts')), str(item.get('period') or '').upper())
+        prev=current.get(key)
+        if prev is None or _winner_key(item) > _winner_key(prev):
+            current[key]=item
+    return sorted(current.values(), key=lambda x: (str(x.get('ts') or ''), str(x.get('id') or '')))
+
+
 def list_readings(handler):
     stored,user=handler.require_user()
     if not stored:return
@@ -47,7 +91,7 @@ def list_readings(handler):
         with conn.cursor() as cur:
             cur.execute('SELECT id,app_id,value,ts,period,recorded_by,source,payload FROM tenant_temperature_readings WHERE venue_id=%s ORDER BY ts ASC,id ASC',(venue_id,))
             rows=cur.fetchall()
-    handler.send_json({'ok':True,'readings':[_public_row(r) for r in rows]})
+    handler.send_json({'ok':True,'readings':_current_rows(rows)})
 
 
 def append_readings(handler,payload):
@@ -84,12 +128,24 @@ def append_readings(handler,payload):
         item=dict(row);item.update({'id':row_id,'appId':app_id,'value':value,'equipmentStatus':equipment_status,'period':period,
                                     'by':str(row.get('by') or user.get('username') or '')[:80],
                                     'source':str(row.get('source') or ('manual' if equipment_status == 'reading' else 'manual-status'))[:80],
-                                    'notes':notes})
+                                    'notes':notes,'slotDate':_slot_day(parsed)})
         cleaned.append(item)
+    slot_keys=[(item['appId'],item['slotDate'],item['period']) for item in cleaned]
+    if len(slot_keys) != len(set(slot_keys)):
+        handler.send_json({'error':'This temperature round contains the same appliance more than once.'},400);return
+
     inserted=[]; venue_id=user['tenantId']
     with app.connect() as conn:
         with conn.cursor() as cur:
             for item in cleaned:
+                cur.execute("""SELECT id FROM tenant_temperature_readings
+                               WHERE venue_id=%s AND app_id=%s AND upper(period)=%s
+                                 AND (ts AT TIME ZONE 'Europe/London')::date=%s::date
+                               LIMIT 1""",
+                            (venue_id,item['appId'],item['period'],item['slotDate']))
+                if cur.fetchone():
+                    conn.rollback()
+                    handler.send_json({'error':f"{item['slotDate']} {item['period']} is already recorded for this appliance. Use Update temperature round to change it."},409);return
                 cur.execute('''INSERT INTO tenant_temperature_readings(venue_id,id,app_id,value,ts,period,recorded_by,source,payload)
                                VALUES(%s,%s,%s,%s,%s::timestamptz,%s,%s,%s,%s::jsonb)
                                ON CONFLICT (venue_id,id) DO NOTHING
