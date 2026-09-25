@@ -2,11 +2,43 @@ import json
 import re
 import contextvars
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import app
 import drive_storage
 
 _TENANT = contextvars.ContextVar('cdc_tenant_id', default=None)
 _LEGACY_READ_STATE = app.read_state
+
+
+_LONDON = ZoneInfo('Europe/London')
+
+
+def _temp_dt(value):
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value or '').replace('Z','+00:00'))
+    except Exception:
+        return None
+
+
+def _temp_slot_day(value):
+    dt=_temp_dt(value)
+    if not dt:
+        return str(value or '')[:10]
+    if dt.tzinfo is None:
+        return dt.date().isoformat()
+    return dt.astimezone(_LONDON).date().isoformat()
+
+
+def _temp_winner_key(item):
+    entered=_temp_dt(item.get('enteredAt'))
+    ts=_temp_dt(item.get('ts'))
+    return (
+        entered.timestamp() if entered else float('-inf'),
+        ts.timestamp() if ts else float('-inf'),
+        str(item.get('id') or ''),
+    )
 
 
 def _authoritative_temperature_rows(venue_id):
@@ -19,7 +51,7 @@ def _authoritative_temperature_rows(venue_id):
                                FROM tenant_temperature_readings
                                WHERE venue_id=%s ORDER BY ts ASC,id ASC''',(venue_id,))
                 rows=cur.fetchall()
-        out=[]
+        current={}
         for row in rows:
             payload=row.get('payload') if isinstance(row.get('payload'),dict) else {}
             item=dict(payload)
@@ -33,8 +65,11 @@ def _authoritative_temperature_rows(venue_id):
                 'by':row['recorded_by'],
                 'source':row['source'],
             })
-            out.append(item)
-        return out
+            key=(str(item.get('appId') or ''),_temp_slot_day(item.get('ts')),str(item.get('period') or '').upper())
+            prev=current.get(key)
+            if prev is None or _temp_winner_key(item) > _temp_winner_key(prev):
+                current[key]=item
+        return sorted(current.values(),key=lambda x:(str(x.get('ts') or ''),str(x.get('id') or '')))
     except Exception:
         # During first boot the normalized table may not exist yet. In that
         # narrow case, keep the state copy rather than breaking sign-in.
