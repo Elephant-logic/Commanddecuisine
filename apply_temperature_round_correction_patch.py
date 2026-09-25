@@ -95,15 +95,32 @@ def correct_round(handler, payload):
                                        FROM tenant_temperature_readings
                                        WHERE venue_id=%s AND id = ANY(%s)
                                        FOR UPDATE""",(venue_id,ids))
-                        old_rows=cur.fetchall()
-                        found={str(r['id']) for r in old_rows}
+                        selected_rows=cur.fetchall()
+                        found={str(r['id']) for r in selected_rows}
                         if found != set(ids):
                             conn.rollback();handler.send_json({'error':'One of the temperature records changed or was already removed. Reopen the round and try again.'},409);return
-                        if any(str(r['app_id'])!=op['appId'] for r in old_rows):
+                        if any(str(r['app_id'])!=op['appId'] for r in selected_rows):
                             conn.rollback();handler.send_json({'error':'Temperature correction did not match the selected appliance.'},400);return
+
+                        # A slot may contain legacy duplicates from the older
+                        # back-fill workflow. Correct/delete the whole
+                        # appliance+local-date+AM/PM slot atomically so an older
+                        # duplicate cannot reappear after the current row is
+                        # removed. Every prior version is copied to server_audit.
+                        anchor=selected_rows[0]
+                        slot_period=str(anchor['period'] or '').upper()
+                        cur.execute("""SELECT id,app_id,value,ts,period,recorded_by,source,payload
+                                       FROM tenant_temperature_readings
+                                       WHERE venue_id=%s AND app_id=%s AND upper(period)=%s
+                                         AND (ts AT TIME ZONE 'Europe/London')::date =
+                                             ((%s::timestamptz) AT TIME ZONE 'Europe/London')::date
+                                       FOR UPDATE""",
+                                    (venue_id,op['appId'],slot_period,anchor['ts']))
+                        old_rows=cur.fetchall()
+                        all_ids=[str(r['id']) for r in old_rows]
                         previous.extend([_public_row(r) for r in old_rows])
-                        cur.execute('DELETE FROM tenant_temperature_readings WHERE venue_id=%s AND id = ANY(%s)',(venue_id,ids))
-                        removed_ids.extend(ids)
+                        cur.execute('DELETE FROM tenant_temperature_readings WHERE venue_id=%s AND id = ANY(%s)',(venue_id,all_ids))
+                        removed_ids.extend(all_ids)
 
                     item=op['record']
                     if item is not None:
@@ -351,15 +368,15 @@ if gap.exists():
 # Cache-bust both historical temperature scripts in every place the server or
 # HTML may reference them.
 sv = server.read_text(encoding='utf-8')
-sv = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260924-roundfix3', sv)
-sv = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260924-roundfix3', sv)
+sv = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260925-slotdedupe1', sv)
+sv = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260925-slotdedupe1', sv)
 server.write_text(sv, encoding='utf-8')
 
 index = app / 'index.html'
 if index.exists():
     ht = index.read_text(encoding='utf-8')
-    ht = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260924-roundfix3', ht)
-    ht = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260924-roundfix3', ht)
+    ht = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260925-slotdedupe1', ht)
+    ht = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260925-slotdedupe1', ht)
     index.write_text(ht, encoding='utf-8')
 
 # The app's runtime loader appends its own cache key to modules. Bust that too;
@@ -368,16 +385,16 @@ if index.exists():
 runtime_loader = app / 'runtime_loader.js'
 if runtime_loader.exists():
     rt = runtime_loader.read_text(encoding='utf-8')
-    rt = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260924-roundfix3', rt)
-    rt = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260924-roundfix3', rt)
-    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260924-roundfix3', rt)
+    rt = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20260925-slotdedupe1', rt)
+    rt = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20260925-slotdedupe1', rt)
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20260925-slotdedupe1', rt)
     runtime_loader.write_text(rt, encoding='utf-8')
 
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard = app / guard_name
     if guard.exists():
         gt = guard.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260924-roundfix3', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20260925-slotdedupe1', gt)
         guard.write_text(gt, encoding='utf-8')
 
 # Build-time checks: fail rather than deploy a UI that can appear editable but
@@ -391,6 +408,6 @@ if "path == '/api/temperature-round/correct'" not in final_server:
     raise SystemExit('Temperature round correction route missing')
 if "modal({title:'Update temperature round'" not in final_fixes or "fetch('/api/temperature-round/correct'" not in final_fixes:
     raise SystemExit('Temperature round correction UI missing')
-if runtime_loader.exists() and '?runtime=20260924-roundfix3' not in runtime_loader.read_text(encoding='utf-8'):
+if runtime_loader.exists() and '?runtime=20260925-slotdedupe1' not in runtime_loader.read_text(encoding='utf-8'):
     raise SystemExit('Temperature round correction runtime cache-bust missing')
 print('Temperature historic rounds are editable/correctable, atomically saved and cache-busted')
