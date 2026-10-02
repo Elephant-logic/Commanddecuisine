@@ -233,7 +233,7 @@ new_func = r'''  function backfillRound(date,period){
         const controls=el('div',{style:'display:grid;grid-template-columns:minmax(145px,1fr) minmax(90px,110px);gap:8px'});
         controls.append(mode,inp,note);
 
-        const initialStatus=existing?(hasValue(existing)?'reading':String(existing.equipmentStatus||'')):'';
+        const initialStatus=existing?(hasValue(existing)?'reading':String(existing.equipmentStatus||'')):'reading';
         mode.value=initialStatus;
         if(existing&&initialStatus==='reading')inp.value=Number(existing.value);
         if(existing&&initialStatus!=='reading')note.value=String(existing.notes||'');
@@ -367,6 +367,55 @@ fixes.write_text(js, encoding='utf-8')
 # than a second, slightly different backfill form.
 if gap.exists():
     gj = gap.read_text(encoding='utf-8')
+
+    # Back Fill is for genuinely missed rounds, not today's still-active round.
+    # AM becomes a gap at 12:00 local time; PM becomes a gap at 18:00 local time.
+    # Past dates still check both rounds. Respect equipment offline/status periods
+    # so an out-of-order unit is not falsely listed as a missing temperature.
+    gs_cov = gj.find('    function coverage(){')
+    ge_cov = gj.find('\n\n    function fillGap(gap){', gs_cov)
+    if gs_cov >= 0 and ge_cov >= 0:
+        gj = gj[:gs_cov] + r'''    function coverage(){
+      const readings=(STATE.tempReadings||[]).filter(real).filter(r=>r&&r.appId&&r.ts&&
+        (typeof tempRecordHasValue==='function'?tempRecordHasValue(r):(r.value!==null&&r.value!==''&&Number.isFinite(Number(r.value)))));
+      const units=coldUnits();
+      if(!readings.length||!units.length)return {from:'',to:'',gaps:[],missingSlots:0};
+
+      const readingDay=r=>typeof tempRecordLocalDay==='function'?tempRecordLocalDay(r):date(r);
+      const readingPeriod=r=>typeof tempRecordPeriod==='function'?String(tempRecordPeriod(r)).toUpperCase():period(r);
+      const dates=readings.map(readingDay).filter(Boolean).sort();
+      const now=new Date();
+      const localToday=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+      const from=dates[0],to=localToday;
+      const have=new Set(readings.map(r=>slot(readingDay(r),r.appId,readingPeriod(r))));
+      const gaps=[];let missingSlots=0;
+
+      const duePeriods=d=>{
+        if(d<localToday)return ['AM','PM'];
+        if(d>localToday)return [];
+        const h=now.getHours();
+        if(h>=18)return ['AM','PM'];
+        if(h>=12)return ['AM'];
+        return [];
+      };
+      const offlineFor=(a,d,p)=>{
+        try{
+          if(typeof tempUnitOfflineForSlot==='function')return !!tempUnitOfflineForSlot(a.id,d,p.toLowerCase());
+          if(typeof tempUnitOfflineOn==='function')return !!tempUnitOfflineOn(a.id,d);
+        }catch(_e){}
+        return false;
+      };
+
+      for(let d=from;d<=to;d=addDay(d,1)){
+        for(const p of duePeriods(d)){
+          const expected=units.filter(a=>!offlineFor(a,d,p));
+          const missing=expected.filter(a=>!have.has(slot(d,a.id,p)));
+          if(missing.length){gaps.push({date:d,period:p,missing,total:expected.length});missingSlots+=missing.length;}
+        }
+      }
+      return {from,to,gaps,missingSlots};
+    }''' + gj[ge_cov:]
+
     gs = gj.find('    function fillGap(gap){')
     ge = gj.find('\n\n    function gapCard(){', gs)
     if gs >= 0 and ge >= 0:
