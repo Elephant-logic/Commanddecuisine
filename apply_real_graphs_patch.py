@@ -66,7 +66,7 @@ function dashTempDuePeriods(ds){
   if(ds>today)return [];
   const h=now.getHours();
   if(h>=18)return ['am','pm'];
-  if(h>=11)return ['am'];
+  if(h>=12)return ['am'];
   return [];
 }
 function dashTempOfflineSince(appId){
@@ -237,7 +237,7 @@ p.write_text(text, encoding='utf-8')
 index = Path('app/index.html')
 if index.exists():
     html = index.read_text(encoding='utf-8')
-    html, n = re.subn(r'main_app\.js\?v=[^"\']+', 'main_app.js?v=20260924-tempdashboard2', html, count=1)
+    html, n = re.subn(r'main_app\.js\?v=[^"\']+', 'main_app.js?v=20261002-tempdashboard3', html, count=1)
     if n != 1:
         raise SystemExit('main_app.js cache-bust marker not found')
     index.write_text(html, encoding='utf-8')
