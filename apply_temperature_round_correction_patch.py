@@ -383,30 +383,41 @@ if gap.exists():
       if(typeof backfillRound==='function')return backfillRound(gap.date,period);
       return toast('Temperature round editor is not available','bad');
     }''' + gj[ge:]
-        # Temporary build diagnostic so the generated gap-card logic can be
-        # patched against the exact code that ships.
-        diag_start = gj.find('    function gapCard(){')
-        if diag_start >= 0:
-            diag_end = gj.find('\n    function ', diag_start + 10)
-            if diag_end < 0:
-                diag_end = min(len(gj), diag_start + 9000)
-            print('TEMP GAPCARD DIAGNOSTIC START')
-            print(gj[diag_start:diag_end])
-            print('TEMP GAPCARD DIAGNOSTIC END')
+        gap_head = """    function gapCard(){
+      const c=coverage();
+      const card=el('div',{class:'card',style:'margin-top:16px'});"""
+        gap_head_new = """    function gapCard(){
+      const c=coverage();
+      const now=new Date();
+      const localToday=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+      const visibleGaps=(Array.isArray(c.gaps)?c.gaps:[]).filter(g=>!(String(g&&g.date||'')===localToday&&String(g&&g.period||'').toLowerCase()==='am'&&now.getHours()<12));
+      const card=el('div',{class:'card',style:'margin-top:16px'});"""
+        if gap_head not in gj:
+            raise SystemExit('Temperature gap card header not found for current-round filtering')
+        gj = gj.replace(gap_head, gap_head_new, 1)
+        gap_replacements = {
+            "c.gaps.length+' missing rounds'": "visibleGaps.length+' missing rounds'",
+            "if(!c.gaps.length){": "if(!visibleGaps.length){",
+            "const byMonth={};c.gaps.forEach(g=>": "const byMonth={};visibleGaps.forEach(g=>",
+        }
+        for old_gap, new_gap in gap_replacements.items():
+            if old_gap not in gj:
+                raise SystemExit(f'Temperature gap card marker missing: {old_gap}')
+            gj = gj.replace(old_gap, new_gap, 1)
         gap.write_text(gj, encoding='utf-8')
 
 # Cache-bust both historical temperature scripts in every place the server or
 # HTML may reference them.
 sv = server.read_text(encoding='utf-8')
-sv = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20261002-currentam1', sv)
-sv = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20261002-currentam1', sv)
+sv = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20261002-currentam2', sv)
+sv = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20261002-currentam2', sv)
 server.write_text(sv, encoding='utf-8')
 
 index = app / 'index.html'
 if index.exists():
     ht = index.read_text(encoding='utf-8')
-    ht = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20261002-currentam1', ht)
-    ht = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20261002-currentam1', ht)
+    ht = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20261002-currentam2', ht)
+    ht = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20261002-currentam2', ht)
     index.write_text(ht, encoding='utf-8')
 
 # The app's runtime loader appends its own cache key to modules. Bust that too;
@@ -415,16 +426,16 @@ if index.exists():
 runtime_loader = app / 'runtime_loader.js'
 if runtime_loader.exists():
     rt = runtime_loader.read_text(encoding='utf-8')
-    rt = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20261002-currentam1', rt)
-    rt = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20261002-currentam1', rt)
-    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261002-currentam1', rt)
+    rt = re.sub(r'kitchen_fixes_20260810\.js\?v=[^"\']+', 'kitchen_fixes_20260810.js?v=20261002-currentam2', rt)
+    rt = re.sub(r'temperature_gap_fill\.js\?v=[^"\']+', 'temperature_gap_fill.js?v=20261002-currentam2', rt)
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261002-currentam2', rt)
     runtime_loader.write_text(rt, encoding='utf-8')
 
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard = app / guard_name
     if guard.exists():
         gt = guard.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261002-currentam1', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261002-currentam2', gt)
         guard.write_text(gt, encoding='utf-8')
 
 # Build-time checks: fail rather than deploy a UI that can appear editable but
@@ -438,6 +449,6 @@ if "path == '/api/temperature-round/correct'" not in final_server:
     raise SystemExit('Temperature round correction route missing')
 if "modal({title:'Update temperature round'" not in final_fixes or "fetch('/api/temperature-round/correct'" not in final_fixes:
     raise SystemExit('Temperature round correction UI missing')
-if runtime_loader.exists() and '?runtime=20261002-currentam1' not in runtime_loader.read_text(encoding='utf-8'):
+if runtime_loader.exists() and '?runtime=20261002-currentam2' not in runtime_loader.read_text(encoding='utf-8'):
     raise SystemExit('Temperature round correction runtime cache-bust missing')
 print('Temperature historic rounds are editable/correctable, atomically saved and cache-busted')
