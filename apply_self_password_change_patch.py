@@ -1010,3 +1010,20 @@ if srv_check.count("'/authoritative_temperature_dashboard.js'") + srv_check.coun
 if rt_check.count("'authoritative_temperature_dashboard.js'") + rt_check.count('"authoritative_temperature_dashboard.js"') != 1:
     raise SystemExit('Authoritative temperature dashboard module not installed exactly once')
 print('The Pass temperature charts now use authoritative saved readings with selectable status-aware trends')
+
+
+# 2026-10-12 TEMP diagnostic for complete-menu importer.
+try:
+    for _mp in list(app.glob('*.js')) + [app / 'index.html']:
+        if not _mp.exists():
+            continue
+        _mt = _mp.read_text(encoding='utf-8', errors='ignore')
+        _low = _mt.lower()
+        for _needle in ('read complete menu','import complete menu','menu pages selected','each page will be read separately','making recipes'):
+            _mi = _low.find(_needle)
+            if _mi >= 0:
+                print('MENU IMPORT DIAGNOSTIC FILE', _mp.name, 'MARKER', _needle)
+                print(_mt[max(0,_mi-6000):min(len(_mt),_mi+24000)])
+                break
+except Exception as _exc:
+    print('MENU IMPORT DIAGNOSTIC FAILED', _exc)
