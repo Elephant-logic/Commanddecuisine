@@ -1027,3 +1027,18 @@ try:
                 break
 except Exception as _exc:
     print('MENU IMPORT DIAGNOSTIC FAILED', _exc)
+
+
+# 2026-10-12 TEMP diagnostic for reliable menu recipe batching.
+try:
+    _rp = app / 'reliable_menu_import.js'
+    if _rp.exists():
+        _rt = _rp.read_text(encoding='utf-8', errors='ignore')
+        for _needle in ('function completeRecipes','async function completeRecipes','const completeRecipes','completeRecipes='):
+            _ri = _rt.find(_needle)
+            if _ri >= 0:
+                print('MENU BATCH DIAGNOSTIC MARKER', _needle)
+                print(_rt[max(0,_ri-5000):min(len(_rt),_ri+18000)])
+                break
+except Exception as _exc:
+    print('MENU BATCH DIAGNOSTIC FAILED', _exc)
