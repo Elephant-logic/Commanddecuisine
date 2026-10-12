@@ -1012,33 +1012,182 @@ if rt_check.count("'authoritative_temperature_dashboard.js'") + rt_check.count('
 print('The Pass temperature charts now use authoritative saved readings with selectable status-aware trends')
 
 
-# 2026-10-12 TEMP diagnostic for complete-menu importer.
-try:
-    for _mp in list(app.glob('*.js')) + [app / 'index.html']:
-        if not _mp.exists():
-            continue
-        _mt = _mp.read_text(encoding='utf-8', errors='ignore')
-        _low = _mt.lower()
-        for _needle in ('read complete menu','import complete menu','menu pages selected','each page will be read separately','making recipes'):
-            _mi = _low.find(_needle)
-            if _mi >= 0:
-                print('MENU IMPORT DIAGNOSTIC FILE', _mp.name, 'MARKER', _needle)
-                print(_mt[max(0,_mi-6000):min(len(_mt),_mi+24000)])
-                break
-except Exception as _exc:
-    print('MENU IMPORT DIAGNOSTIC FAILED', _exc)
 
 
-# 2026-10-12 TEMP diagnostic for reliable menu recipe batching.
-try:
-    _rp = app / 'reliable_menu_import.js'
-    if _rp.exists():
-        _rt = _rp.read_text(encoding='utf-8', errors='ignore')
-        for _needle in ('function completeRecipes','async function completeRecipes','const completeRecipes','completeRecipes='):
-            _ri = _rt.find(_needle)
-            if _ri >= 0:
-                print('MENU BATCH DIAGNOSTIC MARKER', _needle)
-                print(_rt[max(0,_ri-5000):min(len(_rt),_ri+18000)])
-                break
-except Exception as _exc:
-    print('MENU BATCH DIAGNOSTIC FAILED', _exc)
+
+
+# 2026-10-12 Resilient complete-menu recipe generation.
+# A malformed/partial AI response for one recipe batch must never discard the
+# dishes already detected from the menu. Generate smaller batches, retry, then
+# fall back to individual dishes while preserving reviewable drafts.
+reliable_menu = app / 'reliable_menu_import.js'
+if not reliable_menu.exists():
+    raise SystemExit('reliable_menu_import.js missing while installing resilient menu import')
+
+rmi = reliable_menu.read_text(encoding='utf-8')
+fn_start = rmi.find('  async function completeRecipes(dishes,onProgress){')
+fn_end = rmi.find('\n  aiExtractMenu=async function', fn_start)
+if fn_start < 0 or fn_end < 0:
+    raise SystemExit('Could not locate completeRecipes in reliable_menu_import.js')
+
+new_complete_recipes = r'''  async function completeRecipes(dishes,onProgress){
+    const completed=new Map(),failures=new Map(),batchSize=3;
+    const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+    const prompt='Turn these pub menu dishes into complete editable commercial-kitchen recipe DRAFTS. Return ONLY JSON {"recipes":[...]}. Preserve every supplied dish name exactly and return one recipe for every supplied dish. Every recipe must include: name, course, description, portions (use 10), ingredients as at least 3 objects with name, positive numeric qty, practical unit and preparation where useful; prepNotes; method as clear numbered kitchen steps; criticalPoints; allergens; needsVerification true. Use g, kg, ml, l, each, tin, pack or bunch. Quantities must be internally consistent for 10 portions and suitable for scaling. These are working drafts: do not claim inferred allergens or quantities are verified house specifications.';
+
+    const payloadFor=batch=>batch.map(d=>({
+      name:d.name,
+      course:courseOf(d),
+      description:d.description||'',
+      price:d.price||'',
+      allergens:d.allergens||''
+    }));
+
+    const request=async batch=>{
+      const obj=await askAI(prompt+'\n\nDISHES:\n'+JSON.stringify(payloadFor(batch)));
+      const rows=Array.isArray(obj&&obj.recipes)?obj.recipes:[];
+      if(!rows.length)throw new Error('No recipes array returned');
+      return rows;
+    };
+
+    const assignRows=(batch,rows)=>{
+      batch.forEach((d,idx)=>{
+        let r=(rows||[]).find(x=>x&&norm(x.name)===norm(d.name));
+        // Models occasionally preserve order but slightly alter punctuation in a
+        // dish name. Only use index fallback when cardinality is unambiguous.
+        if(!r&&rows.length===batch.length)r=rows[idx];
+        if(r)completed.set(norm(d.name),{...r,name:d.name});
+      });
+    };
+
+    for(let start=0;start<dishes.length;start+=batchSize){
+      const batch=dishes.slice(start,start+batchSize);
+      if(onProgress)onProgress(start,Math.min(start+batch.length,dishes.length),dishes.length);
+
+      let rows=null,lastErr=null;
+      for(let attempt=0;attempt<2&&!rows;attempt++){
+        try{
+          rows=await request(batch);
+        }catch(e){
+          lastErr=e;
+          if(attempt===0)await wait(450);
+        }
+      }
+      if(rows)assignRows(batch,rows);
+
+      // Anything the batch omitted gets its own smaller request. A failure here
+      // is retained as a review draft rather than cancelling the whole menu.
+      for(const d of batch){
+        if(completed.has(norm(d.name)))continue;
+        let oneErr=lastErr;
+        for(let attempt=0;attempt<2&&!completed.has(norm(d.name));attempt++){
+          try{
+            const one=await request([d]);
+            assignRows([d],one);
+            if(!completed.has(norm(d.name)))throw new Error('Recipe details were not returned for '+d.name);
+          }catch(e){
+            oneErr=e;
+            if(attempt===0)await wait(350);
+          }
+        }
+        if(!completed.has(norm(d.name))){
+          failures.set(norm(d.name),String(oneErr&&oneErr.message||'Detailed recipe generation needs review'));
+        }
+      }
+    }
+
+    return dishes.map(d=>{
+      const r=completed.get(norm(d.name))||null;
+      const src=r||{};
+      const ingredients=(src.ingredients||[]).map(i=>typeof i==='string'
+        ?{name:i,qty:1,unit:'each',preparation:''}
+        :{name:String(i&&i.name||'').trim(),qty:Math.max(.01,num(i&&(i.qty||i.quantity))||1),unit:String(i&&i.unit||'each').trim(),preparation:String(i&&i.preparation||'').trim()}
+      ).filter(i=>i.name);
+      const method=Array.isArray(src.method)?src.method:(src.method?[String(src.method)]:[]);
+      const incomplete=!r||!ingredients.length||!method.length;
+      return {
+        ...d,...src,
+        name:d.name,
+        category:courseOf(src.name?src:d),
+        course:courseOf(src.name?src:d),
+        description:String(src.description||d.description||'').trim(),
+        allergens:Array.isArray(src.allergens)?src.allergens.join(', '):String(src.allergens||d.allergens||''),
+        yield:String(src.yield||src.portions||10)+' portions',
+        portions:Math.max(1,num(src.portions)||10),
+        prepNotes:Array.isArray(src.prepNotes)?src.prepNotes:(src.prepNotes?[String(src.prepNotes)]:[]),
+        method,
+        criticalPoints:Array.isArray(src.criticalPoints)?src.criticalPoints:(src.criticalPoints?[String(src.criticalPoints)]:[]),
+        ingredients,
+        needsReview:true,
+        needsVerification:true,
+        importIncomplete:incomplete,
+        importIssue:incomplete?(failures.get(norm(d.name))||'Detailed recipe needs manual review'):''
+      };
+    });
+  }'''
+
+rmi = rmi[:fn_start] + new_complete_recipes + rmi[fn_end:]
+
+# Make the preview explicit when a dish survived via the review fallback.
+old_preview_note = "body.append(el('div',{class:'muted',style:'font-size:12px;margin-bottom:10px'},'Each dish now has a detailed recipe draft. Remove anything that is not actually a dish.'));"
+new_preview_note = """const incompleteCount=dishes.filter(d=>d&&d.importIncomplete).length;
+      body.append(el('div',{class:'muted',style:'font-size:12px;margin-bottom:10px'},
+        incompleteCount
+          ? incompleteCount+' dish'+(incompleteCount===1?'':'es')+' need recipe review. They were kept instead of cancelling the import.'
+          : 'Each dish now has a detailed recipe draft. Remove anything that is not actually a dish.'));"""
+if old_preview_note not in rmi:
+    raise SystemExit('Reliable menu preview note marker missing')
+rmi = rmi.replace(old_preview_note, new_preview_note, 1)
+
+old_preview_row = "wrap.append(el('div',{class:'dk-t'},d.name),el('div',{class:'dk-s'},courseOf(d)+' · '+(d.ingredients||[]).length+' ingredients · '+((d.method||[]).length||'method ready')));"
+new_preview_row = """wrap.append(
+          el('div',{class:'dk-t'},d.name),
+          el('div',{class:'dk-s'},
+            d.importIncomplete
+              ? courseOf(d)+' · Needs recipe review'
+              : courseOf(d)+' · '+(d.ingredients||[]).length+' ingredients · '+((d.method||[]).length||'method ready'))
+        );"""
+if old_preview_row not in rmi:
+    raise SystemExit('Reliable menu preview row marker missing')
+rmi = rmi.replace(old_preview_row, new_preview_row, 1)
+
+old_ready = "footerSave.style.display='';setStatus(dishes.length+' dishes ready to save as one menu with '+dishes.length+' recipe drafts.');"
+new_ready = """footerSave.style.display='';
+      const reviewCount=dishes.filter(d=>d&&d.importIncomplete).length;
+      setStatus(dishes.length+' dishes ready to save'+(reviewCount?' · '+reviewCount+' need recipe review':'')+'.');"""
+if old_ready not in rmi:
+    raise SystemExit('Reliable menu ready-status marker missing')
+rmi = rmi.replace(old_ready, new_ready, 1)
+
+reliable_menu.write_text(rmi, encoding='utf-8')
+
+# Fresh browser cache key for the repaired importer, regardless of whether it is
+# loaded by the runtime loader or directly from index.html.
+runtime_loader = app / 'runtime_loader.js'
+if runtime_loader.exists():
+    rt = runtime_loader.read_text(encoding='utf-8')
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261012-menuimport1', rt)
+    rt = re.sub(r"reliable_menu_import\.js\?v=[^'\"]+", 'reliable_menu_import.js?v=20261012-menuimport1', rt)
+    runtime_loader.write_text(rt, encoding='utf-8')
+
+index = app / 'index.html'
+if index.exists():
+    ht = index.read_text(encoding='utf-8')
+    ht = re.sub(r"reliable_menu_import\.js\?v=[^\"']+", 'reliable_menu_import.js?v=20261012-menuimport1', ht)
+    index.write_text(ht, encoding='utf-8')
+
+for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
+    guard = app / guard_name
+    if guard.exists():
+        gt = guard.read_text(encoding='utf-8')
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261012-menuimport1', gt)
+        guard.write_text(gt, encoding='utf-8')
+
+final_rmi = reliable_menu.read_text(encoding='utf-8')
+if 'const completed=new Map(),failures=new Map(),batchSize=3;' not in final_rmi:
+    raise SystemExit('Resilient menu batching did not install')
+if 'They were kept instead of cancelling the import.' not in final_rmi:
+    raise SystemExit('Menu review fallback UI did not install')
+if 'start+=5' in final_rmi:
+    raise SystemExit('Legacy five-dish all-or-nothing batching is still active')
+print('Complete-menu import now retries small recipe batches and preserves review drafts instead of aborting')
