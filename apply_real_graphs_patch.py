@@ -65,8 +65,7 @@ function dashTempDuePeriods(ds){
   if(ds<today)return ['am','pm'];
   if(ds>today)return [];
   const h=now.getHours();
-  if(h>=18)return ['am','pm'];
-  if(h>=12)return ['am'];
+  if(h>=12)return ['am','pm'];
   return [];
 }
 function dashTempOfflineSince(appId){
