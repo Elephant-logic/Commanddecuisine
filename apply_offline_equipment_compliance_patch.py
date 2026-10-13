@@ -29,7 +29,7 @@ new = '''  const allColdUnits=STATE.appliances.filter(a=>a.type==="fridge"||a.ty
   const breaches=coldUnits.filter(a=>{const r=latestReading(a.id);return r&&tempRecordHasValue(r)&&tempStatus(a,Number(r.value))==="danger";}).length;
   const roundDetail=count=>count+"/"+coldUnits.length+" active"+(offlineUnits.length?" · "+offlineUnits.length+" offline":"");
   t.push({id:"temp_am",label:"Morning temperature round",route:"temps",icon:"temp",state:amDone?"done":(h>=11?"over":"due"),detail:roundDetail(amCount)});
-  t.push({id:"temp_pm",label:"Evening temperature round",route:"temps",icon:"temp",state:pmDone?"done":(h>=18?"over":h>=15?"due":"ok"),detail:roundDetail(pmCount)});'''
+  t.push({id:"temp_pm",label:"Evening temperature round",route:"temps",icon:"temp",state:pmDone?"done":(h>=18?"over":h>=12?"due":"ok"),detail:roundDetail(pmCount)});'''
 if old not in text:
     raise SystemExit('compliance temperature block not found')
 text = text.replace(old, new, 1)
