@@ -1272,16 +1272,38 @@ print('Temperature rounds now roll from AM to PM at local noon and refresh autom
 
 
 # 2026-10-13 PM temperature round visibility.
-# The live round changes to PM at local noon, so The Pass must show the PM task
-# as due from 12:00 as well. It becomes overdue later, at 18:00.
-_index = app / 'index.html'
-_pm_html = _index.read_text(encoding='utf-8')
+# externalize_main_script.py moves the live Pass logic into main_app.js before
+# this final overlay runs. Patch the shipped runtime, not only index.html.
 _pm_old = 'state:pmDone?"done":(h>=18?"over":h>=15?"due":"ok")'
 _pm_new = 'state:pmDone?"done":(h>=18?"over":h>=12?"due":"ok")'
-if _pm_old in _pm_html:
-    _pm_html = _pm_html.replace(_pm_old, _pm_new)
-    _index.write_text(_pm_html, encoding='utf-8')
-_pm_final = _index.read_text(encoding='utf-8')
+_pm_changed = 0
+for _pm_target in (app / 'main_app.js', app / 'index.html'):
+    if not _pm_target.exists():
+        continue
+    _pm_text = _pm_target.read_text(encoding='utf-8')
+    _pm_count = _pm_text.count(_pm_old)
+    if _pm_count:
+        _pm_text = _pm_text.replace(_pm_old, _pm_new)
+        _pm_target.write_text(_pm_text, encoding='utf-8')
+        _pm_changed += _pm_count
+
+_main_app = app / 'main_app.js'
+if not _main_app.exists():
+    raise SystemExit('main_app.js missing while enforcing PM temperature due time')
+_pm_final = _main_app.read_text(encoding='utf-8')
 if _pm_new not in _pm_final:
-    raise SystemExit('PM temperature round is not configured due from noon')
-print('PM temperature round now appears due from 12:00 local time')
+    raise SystemExit('PM temperature round is not configured due from noon in main_app.js')
+
+# Force phones to fetch the corrected Pass runtime instead of a cached main_app.
+_index = app / 'index.html'
+_pm_html = _index.read_text(encoding='utf-8')
+_pm_html = re.sub(
+    r'main_app\.js(?:\?[^"\']*)?',
+    'main_app.js?v=20261013-pmdue2',
+    _pm_html
+)
+_index.write_text(_pm_html, encoding='utf-8')
+if 'main_app.js?v=20261013-pmdue2' not in _index.read_text(encoding='utf-8'):
+    raise SystemExit('PM temperature main_app cache-bust missing')
+print(f'PM temperature round now appears due from 12:00 local time; updated {_pm_changed} live task rule(s)')
+
