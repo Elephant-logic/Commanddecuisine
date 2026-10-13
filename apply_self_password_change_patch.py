@@ -1191,3 +1191,81 @@ if 'They were kept instead of cancelling the import.' not in final_rmi:
 if 'start+=5' in final_rmi:
     raise SystemExit('Legacy five-dish all-or-nothing batching is still active')
 print('Complete-menu import now retries small recipe batches and preserves review drafts instead of aborting')
+
+
+# 2026-10-13 Local-noon AM/PM temperature rollover.
+# Kitchen temperature rounds use the device's local calendar/time. A mobile tab
+# left open across noon must switch from AM to PM without a manual refresh.
+rollover_src = Path('temperature_round_rollover.js')
+if not rollover_src.exists():
+    raise SystemExit('Missing temperature_round_rollover.js')
+rollover_target = app / 'temperature_round_rollover.js'
+rollover_target.write_bytes(rollover_src.read_bytes())
+
+# Ensure the live round itself uses local date + local noon split.
+main_path = app / 'main_app.js'
+if not main_path.exists():
+    raise SystemExit('main_app.js missing while installing temperature noon rollover')
+mj = main_path.read_text(encoding='utf-8')
+_trs = mj.find('function tempRound(v){')
+_tre = mj.find('function breachModal(', _trs)
+if _trs < 0 or _tre < 0:
+    raise SystemExit('Could not locate tempRound in main_app.js')
+_temp_round = mj[_trs:_tre]
+if 'const period=new Date().getHours()<12?"am":"pm";' not in _temp_round:
+    raise SystemExit('Temperature round local noon period marker missing')
+if 'const today=todayISO();' in _temp_round:
+    _temp_round = _temp_round.replace(
+        'const today=todayISO();',
+        'const _nowLocal=new Date(); const today=[_nowLocal.getFullYear(),String(_nowLocal.getMonth()+1).padStart(2,"0"),String(_nowLocal.getDate()).padStart(2,"0")].join("-");',
+        1
+    )
+mj = mj[:_trs] + _temp_round + mj[_tre:]
+main_path.write_text(mj, encoding='utf-8')
+
+# Serve and load the rollover helper last.
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+rollover_route = "    '/temperature_round_rollover.js',\n"
+if rollover_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding temperature rollover')
+    srv = srv.replace(runtime_marker, runtime_marker + rollover_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+runtime_loader = app / 'runtime_loader.js'
+if not runtime_loader.exists():
+    raise SystemExit('runtime_loader.js missing while adding temperature rollover')
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for temperature rollover')
+body = m.group(2)
+for quoted in ("'temperature_round_rollover.js'", '"temperature_round_rollover.js"'):
+    body = body.replace(",\n    " + quoted, "")
+    body = body.replace(quoted + ",\n", "")
+body = body.rstrip() + ",\n    'temperature_round_rollover.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261013-tempnoon1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
+    guard = app / guard_name
+    if guard.exists():
+        gt = guard.read_text(encoding='utf-8')
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261013-tempnoon1', gt)
+        guard.write_text(gt, encoding='utf-8')
+
+# Final checks.
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+mj_check = main_path.read_text(encoding='utf-8')
+if srv_check.count("'/temperature_round_rollover.js'") + srv_check.count('"/temperature_round_rollover.js"') != 1:
+    raise SystemExit('Temperature rollover route not installed exactly once')
+if rt_check.count("'temperature_round_rollover.js'") + rt_check.count('"temperature_round_rollover.js"') != 1:
+    raise SystemExit('Temperature rollover module not installed exactly once')
+if 'const period=new Date().getHours()<12?"am":"pm";' not in mj_check:
+    raise SystemExit('Temperature round no longer uses local noon split')
+if 'const today=todayISO();' in mj_check[_trs:_trs+1200]:
+    raise SystemExit('Temperature round is still using UTC date')
+print('Temperature rounds now roll from AM to PM at local noon and refresh automatically')
