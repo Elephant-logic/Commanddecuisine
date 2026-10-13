@@ -1269,3 +1269,19 @@ if 'const period=new Date().getHours()<12?"am":"pm";' not in mj_check:
 if 'const today=todayISO();' in mj_check[_trs:_trs+1200]:
     raise SystemExit('Temperature round is still using UTC date')
 print('Temperature rounds now roll from AM to PM at local noon and refresh automatically')
+
+
+# 2026-10-13 PM temperature round visibility.
+# The live round changes to PM at local noon, so The Pass must show the PM task
+# as due from 12:00 as well. It becomes overdue later, at 18:00.
+_index = app / 'index.html'
+_pm_html = _index.read_text(encoding='utf-8')
+_pm_old = 'state:pmDone?"done":(h>=18?"over":h>=15?"due":"ok")'
+_pm_new = 'state:pmDone?"done":(h>=18?"over":h>=12?"due":"ok")'
+if _pm_old in _pm_html:
+    _pm_html = _pm_html.replace(_pm_old, _pm_new)
+    _index.write_text(_pm_html, encoding='utf-8')
+_pm_final = _index.read_text(encoding='utf-8')
+if _pm_new not in _pm_final:
+    raise SystemExit('PM temperature round is not configured due from noon')
+print('PM temperature round now appears due from 12:00 local time')
