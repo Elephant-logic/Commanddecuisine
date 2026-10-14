@@ -273,8 +273,17 @@
     modal.appendChild(list);
 
     var actions=document.createElement('div');actions.className='cdc-a6-buttons';
+    actions.appendChild(button('📷 Update from photo / notes','btn primary',function(){
+      var id=recipe&&recipe.id;
+      closeOverlay();
+      if(window.CDCRecipeImporter&&typeof window.CDCRecipeImporter.open==='function'){
+        window.CDCRecipeImporter.open(id);
+        return;
+      }
+      notify('Recipe photo / notes importer is still loading. Reopen the recipe and try again.',true);
+    }));
     actions.appendChild(button('+ Add ingredient','btn ghost',function(){openIngredient(recipe,-1);}));
-    actions.appendChild(button('Close','btn primary',closeOverlay));
+    actions.appendChild(button('Close','btn ghost',closeOverlay));
     modal.appendChild(actions);
     document.body.appendChild(overlay);
     overlay.onclick=function(e){if(e.target===overlay)closeOverlay();};
