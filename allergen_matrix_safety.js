@@ -1,65 +1,71 @@
-/* Command de Cuisine - stable read-only allergen matrix + ingredient allergen workspace */
+/* Command de Cuisine - safe mobile allergen matrix + ingredient editor */
 (function(){
   'use strict';
-  if(window.__cdcRecipeIngredientWorkspaceV4) return;
-  window.__cdcRecipeIngredientWorkspaceV4=true;
+  if(window.__cdcRecipeIngredientWorkspaceV5) return;
+  window.__cdcRecipeIngredientWorkspaceV5=true;
 
-  var OVERLAY='cdc-recipe-workspace-overlay';
-  var ALLERGEN_STATUS='Needs review after ingredient change';
-  var ALLERGENS=[
-    'Celery','Gluten','Crustaceans','Eggs','Fish','Lupin','Milk',
-    'Molluscs','Mustard','Nuts','Peanuts','Sesame','Soya','Sulphites'
-  ];
+  var OVERLAY='cdc-allergen-workspace-overlay';
+  var ALLERGENS=['Celery','Gluten','Crustaceans','Eggs','Fish','Lupin','Milk','Molluscs','Mustard','Nuts','Peanuts','Sesame','Soya','Sulphites'];
   var ALIASES={
-    celery:['celery'],
-    gluten:['gluten','wheat','barley','rye','oats'],
-    crustaceans:['crustacean','crustaceans','prawn','prawns','shrimp','shrimp','crab','lobster','scampi'],
-    eggs:['egg','eggs'],
-    fish:['fish'],
-    lupin:['lupin'],
-    milk:['milk','dairy'],
+    celery:['celery'],gluten:['gluten','wheat','barley','rye','oats'],
+    crustaceans:['crustacean','crustaceans','prawn','prawns','shrimp','crab','lobster','scampi','shellfish'],
+    eggs:['egg','eggs'],fish:['fish'],lupin:['lupin'],milk:['milk','dairy'],
     molluscs:['mollusc','molluscs','mussel','mussels','oyster','oysters','squid','octopus'],
-    mustard:['mustard'],
-    nuts:['nuts','tree nuts','almond','almonds','hazelnut','hazelnuts','walnut','walnuts','cashew','cashews','pistachio','pistachios','pecan','pecans','brazil nut','brazil nuts'],
-    peanuts:['peanut','peanuts'],
-    sesame:['sesame'],
-    soya:['soya','soy'],
+    mustard:['mustard'],nuts:['nuts','tree nuts','almond','almonds','hazelnut','hazelnuts','walnut','walnuts','cashew','cashews','pistachio','pistachios','pecan','pecans'],
+    peanuts:['peanut','peanuts'],sesame:['sesame'],soya:['soya','soy'],
     sulphites:['sulphite','sulphites','sulfite','sulfites','sulphur dioxide','sulfur dioxide']
   };
 
   function s(v){return String(v==null?'':v);}
   function norm(v){return s(v).toLowerCase().trim().replace(/\s+/g,' ');}
   function esc(v){return s(v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function text(el){return s(el&&el.textContent).trim();}
   function recipes(){try{return Array.isArray(STATE.recipes)?STATE.recipes:[];}catch(e){return [];}}
   function stock(){try{return Array.isArray(STATE.stock)?STATE.stock:[];}catch(e){return [];}}
   function recipeById(id){return recipes().find(function(r){return String(r&&r.id)===String(id);})||null;}
-  function recipeByName(name){
-    var n=norm(name); if(!n)return null;
-    var rows=recipes().filter(function(r){return norm(r&&r.name)===n;});
-    return rows.length===1?rows[0]:null;
-  }
-  function stockName(row){return s(row&&(row.item||row.name||row.product||row.label)).trim();}
-  function stockUnit(row){return s(row&&(row.unit||row.stockUnit||row.baseUnit||row.qtyUnit)).trim();}
-  function stockQty(row){
-    var keys=['actualQty','quantity','qty','onHand','currentQty','stock','amount'];
-    for(var i=0;i<keys.length;i++){
-      var n=Number(row&&row[keys[i]]);
-      if(Number.isFinite(n))return n;
-    }
-    return null;
-  }
+  function stockName(x){return s(x&&(x.item||x.name||x.product||x.label)).trim();}
   function stockById(id){return stock().find(function(x){return String(x&&x.id)===String(id);})||null;}
-  function stockForIngredient(ing){
+  function ingredientStock(ing){
     if(!ing)return null;
-    if(ing.stockId!=null&&ing.stockId!==''){
-      var x=stockById(ing.stockId); if(x)return x;
-    }
-    var n=norm(ing.name);
-    if(!n)return null;
+    if(ing.stockId){var byId=stockById(ing.stockId);if(byId)return byId;}
+    var n=norm(ing.name);if(!n)return null;
     var matches=stock().filter(function(x){return norm(stockName(x))===n;});
     return matches.length===1?matches[0]:null;
   }
+
+  function parseAllergens(value){
+    if(value==null||value==='')return [];
+    var raw=[];
+    if(Array.isArray(value))raw=value.map(String);
+    else if(typeof value==='object')raw=Object.keys(value).filter(function(k){return value[k]===true||value[k]===1||value[k]==='yes';});
+    else raw=[String(value)];
+    var words=' '+raw.join(' ').toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()+' ';
+    var out=[];
+    ALLERGENS.forEach(function(label){
+      var aliases=ALIASES[norm(label)]||[norm(label)];
+      var present=aliases.some(function(a){
+        var needle=' '+String(a).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()+' ';
+        return needle.trim()&&words.indexOf(needle)>=0;
+      });
+      if(present)out.push(label);
+    });
+    return out;
+  }
+  function uniqueAllergens(values){
+    var set=new Set();
+    (values||[]).forEach(function(v){
+      ALLERGENS.forEach(function(a){if(norm(a)===norm(v))set.add(a);});
+    });
+    return ALLERGENS.filter(function(a){return set.has(a);});
+  }
+  function ingredientAllergens(ing){return uniqueAllergens(parseAllergens(ing&&ing.allergens));}
+  function recipeAllergens(recipe){
+    var all=[];
+    (recipe&&Array.isArray(recipe.ingredients)?recipe.ingredients:[]).forEach(function(ing){all=all.concat(ingredientAllergens(ing));});
+    all=all.concat(parseAllergens(recipe&&recipe.extraAllergens));
+    if(!all.length)all=all.concat(parseAllergens(recipe&&recipe.allergens));
+    return uniqueAllergens(all);
+  }
+  function ingredientSuggestions(ing){return uniqueAllergens(parseAllergens(ing&&ing.allergenSuggestions));}
 
   function canonicalUnit(u){
     u=norm(u).replace(/litres?/,'l').replace(/liters?/,'l').replace(/millilitres?/,'ml').replace(/milliliters?/,'ml').replace(/kilograms?/,'kg').replace(/grams?/,'g').replace(/ounces?/,'oz');
@@ -67,530 +73,313 @@
     return u;
   }
   function convertQty(q,from,to){
-    q=Number(q); from=canonicalUnit(from); to=canonicalUnit(to);
+    q=Number(q);from=canonicalUnit(from);to=canonicalUnit(to);
     if(!Number.isFinite(q)||!from||!to)return null;
     if(from===to)return q;
-    var grams={g:1,kg:1000,oz:28.349523125};
-    if(grams[from]&&grams[to])return q*grams[from]/grams[to];
+    var g={g:1,kg:1000,oz:28.349523125};
+    if(g[from]&&g[to])return q*g[from]/g[to];
     var ml={ml:1,l:1000};
     if(ml[from]&&ml[to])return q*ml[from]/ml[to];
-    if(from==='each'&&to==='each')return q;
     return null;
   }
-  function round(n){return String(Math.round(Number(n)*100)/100);}
+  function stockQty(row){
+    var keys=['actualQty','quantity','qty','onHand','currentQty','stock','amount'];
+    for(var i=0;i<keys.length;i++){var n=Number(row&&row[keys[i]]);if(Number.isFinite(n))return n;}
+    return null;
+  }
+  function stockUnit(row){return s(row&&(row.unit||row.stockUnit||row.baseUnit||row.qtyUnit)).trim();}
   function purchasingLine(ing){
-    var q=Number(ing&&ing.qty), u=s(ing&&ing.unit).trim();
-    var st=stockForIngredient(ing);
-    if(!st){
-      return {kind:'unlinked',text:(Number.isFinite(q)&&q>0?q+' '+u+' required for one batch · ':'')+'not linked to Stock (that is optional)'};
-    }
-    var have=stockQty(st), su=stockUnit(st);
-    if(have==null)return {kind:'linked',text:'Linked to '+stockName(st)+' · stock quantity not set'};
-    var needInStockUnit=convertQty(q,u,su);
-    if(needInStockUnit==null)return {kind:'linked',text:'Linked to '+stockName(st)+' · '+have+' '+su+' on hand · unit conversion needs review'};
-    var short=Math.max(0,needInStockUnit-have);
-    return short>0
-      ?{kind:'short',text:'Linked to '+stockName(st)+' · order about '+round(short)+' '+su+' for one batch'}
-      :{kind:'ok',text:'Linked to '+stockName(st)+' · enough on hand for one batch'};
+    var st=ingredientStock(ing),q=Number(ing&&ing.qty),u=s(ing&&ing.unit).trim();
+    if(!st)return 'Not linked to Stock — that is optional.';
+    var have=stockQty(st),su=stockUnit(st);
+    if(have==null)return 'Linked to '+stockName(st)+' · stock quantity not set.';
+    var need=convertQty(q,u,su);
+    if(need==null)return 'Linked to '+stockName(st)+' · '+have+' '+su+' on hand · unit conversion needs review.';
+    var short=Math.max(0,need-have);
+    return short>0?'Linked to '+stockName(st)+' · order about '+(Math.round(short*100)/100)+' '+su+' for one batch.':'Linked to '+stockName(st)+' · enough on hand for one batch.';
   }
 
-  function labelForKey(key){
-    key=norm(key);
-    for(var i=0;i<ALLERGENS.length;i++)if(norm(ALLERGENS[i])===key)return ALLERGENS[i];
-    return '';
-  }
-  function parseAllergens(value){
-    if(value==null||value==='')return [];
-    var raw=[];
-    if(Array.isArray(value)) raw=value.map(String);
-    else if(typeof value==='object') raw=Object.keys(value).filter(function(k){return value[k]===true||value[k]==='yes'||value[k]===1;});
-    else raw=[String(value)];
-    var joined=' '+raw.join(' , ').toLowerCase()+' ';
-    var words=' '+joined.replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()+' ';
-    function hasAlias(a){
-      var needle=' '+String(a).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()+' ';
-      return needle.trim()!=='' && words.indexOf(needle)>=0;
-    }
-    var out=[];
-    ALLERGENS.forEach(function(label){
-      var key=norm(label), aliases=ALIASES[key]||[key];
-      if(aliases.some(hasAlias))out.push(label);
-    });
-    return out;
-  }
-  function uniqueAllergens(values){
-    var set=new Set();
-    (values||[]).forEach(function(v){
-      var label=labelForKey(v)||ALLERGENS.find(function(a){return norm(a)===norm(v);});
-      if(label)set.add(label);
-    });
-    return ALLERGENS.filter(function(a){return set.has(a);});
-  }
-  function formatAllergens(value){return parseAllergens(value).join(', ');}
-  function ingredientAllergens(ing){return uniqueAllergens(parseAllergens(ing&&ing.allergens));}
-  function rollup(items,extras){
-    var all=[];
-    (items||[]).forEach(function(i){all=all.concat(ingredientAllergens(i));});
-    all=all.concat(extras||[]);
-    return uniqueAllergens(all);
-  }
-  function stockDeclaredAllergens(st){
-    if(!st)return [];
-    var fields=['supplierAllergens','declaredAllergens','allergenDeclaration','allergenSpec','allergens'];
-    for(var i=0;i<fields.length;i++){
-      var x=parseAllergens(st[fields[i]]);
-      if(x.length)return x;
-    }
-    return [];
-  }
-
-  function closeWorkspace(){var old=document.getElementById(OVERLAY);if(old)old.remove();}
+  function closeOverlay(){var x=document.getElementById(OVERLAY);if(x)x.remove();}
   function notify(msg,bad){
-    try{if(typeof toast==='function')return toast(msg,bad?'bad':'ok');}catch(e){}
+    try{if(typeof toast==='function'){toast(msg,bad?'bad':'ok');return;}}catch(e){}
     console[bad?'warn':'info']('[Command de Cuisine] '+msg);
   }
   async function saveState(reason){
-    if(typeof save==='function'){
-      var r=save(reason);
-      if(r&&typeof r.then==='function')await r;
-      return;
-    }
+    if(typeof save==='function'){var r=save(reason);if(r&&typeof r.then==='function')await r;return;}
     if(typeof persist==='function')await persist(reason);
   }
-
-  function ingredientSummary(recipe){
-    var items=Array.isArray(recipe&&recipe.ingredients)?recipe.ingredients:[];
-    if(!items.length){
-      return '<div class="cdc-rw-empty"><strong>No ingredients saved yet</strong><span>Open Edit recipe & ingredients. You can add them yourself or build a draft, then review it.</span></div>';
-    }
-    return items.map(function(ing){
-      var p=purchasingLine(ing||{}), st=stockForIngredient(ing), als=ingredientAllergens(ing);
-      var qty=[ing&&ing.qty,ing&&ing.unit].filter(function(v){return v!=null&&s(v)!=='';}).join(' ');
-      var prep=s(ing&&ing.preparation||ing&&ing.note).trim();
-      return '<div class="cdc-rw-ing">'+
-        '<div class="cdc-rw-ing-head"><strong>'+esc(ing&&ing.name||'Ingredient')+'</strong><span>'+esc(qty)+'</span></div>'+
-        (prep?'<div class="cdc-rw-meta">'+esc(prep)+'</div>':'')+
-        '<div class="cdc-rw-allergen-line"><b>Allergens:</b> '+esc(als.length?als.join(', '):'None selected')+'</div>'+
-        '<div class="cdc-rw-purchase '+esc(p.kind)+'">'+esc(p.text)+'</div>'+
-        (st?'<div class="cdc-rw-meta">Stock link: '+esc(stockName(st))+'</div>':'')+
-      '</div>';
-    }).join('');
+  function currentUser(){
+    try{return (ME&&(ME.name||ME.username))||'manager';}catch(e){return 'manager';}
+  }
+  function snapshotVersion(recipe,reason){
+    try{
+      var copy=JSON.parse(JSON.stringify(recipe));delete copy.versions;
+      recipe.versions=Array.isArray(recipe.versions)?recipe.versions:[];
+      recipe.versions.push({id:'rv_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),data:copy,reason:reason,savedAt:new Date().toISOString(),savedBy:currentUser()});
+      if(recipe.versions.length>20)recipe.versions=recipe.versions.slice(-20);
+    }catch(e){}
+  }
+  function recomputeRecipeAllergens(recipe){
+    var all=[];
+    (recipe.ingredients||[]).forEach(function(ing){all=all.concat(ingredientAllergens(ing));});
+    all=all.concat(parseAllergens(recipe.extraAllergens));
+    all=uniqueAllergens(all);
+    recipe.allergens=all.join(', ');
+    recipe.allergenReviewRequired=true;
+    recipe.needsReview=true;
+    recipe.ingredientAllergensManaged=true;
+    return all;
   }
 
-  function showInspector(recipe){
-    if(!recipe)return;
-    closeWorkspace();
-    var overlay=document.createElement('div');overlay.id=OVERLAY;overlay.className='cdc-rw-overlay';
-    overlay.innerHTML=
-      '<div class="cdc-rw-modal" role="dialog" aria-modal="true">'+
-        '<div class="cdc-rw-head"><div><div class="cdc-rw-kicker">Recipe workspace</div><h3>'+esc(recipe.name||'Recipe')+'</h3></div><button type="button" class="btn ghost cdc-rw-close">Close</button></div>'+
-        '<div class="cdc-rw-box"><strong>Recipe allergen summary</strong><div>'+esc(formatAllergens(recipe.allergens)||'None currently listed')+'</div>'+
-          '<div class="cdc-rw-meta">This summary is updated from ingredient allergen selections when you save the recipe.</div></div>'+
-        '<div class="cdc-rw-section">Ingredients & purchasing</div>'+
-        '<div class="cdc-rw-list">'+ingredientSummary(recipe)+'</div>'+
-        '<div class="cdc-rw-actions"><button type="button" class="btn primary cdc-rw-edit">Edit recipe & ingredients</button></div>'+
-      '</div>';
-    document.body.appendChild(overlay);
-    overlay.querySelector('.cdc-rw-close').onclick=closeWorkspace;
-    overlay.querySelector('.cdc-rw-edit').onclick=function(){openEditor(recipeById(recipe.id)||recipe);};
-    overlay.addEventListener('click',function(e){if(e.target===overlay)closeWorkspace();});
+  function css(){
+    if(document.getElementById('cdc-allergen-v5-css'))return;
+    var st=document.createElement('style');st.id='cdc-allergen-v5-css';
+    st.textContent=
+      '.cdc-a5-wrap{display:flex;flex-direction:column;gap:12px}.cdc-a5-head{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}.cdc-a5-head h2{margin:0}.cdc-a5-copy{color:var(--muted,#9ca6b3);font-size:13px;line-height:1.45;max-width:760px}.cdc-a5-actions{display:flex;gap:8px;flex-wrap:wrap}.cdc-a5-search{width:min(360px,100%);box-sizing:border-box;background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border:1px solid var(--line,#35404b);border-radius:10px;padding:10px}.cdc-a5-scroll{overflow:auto;-webkit-overflow-scrolling:touch;max-height:calc(100vh - 235px);border:1px solid var(--line,#35404b);border-radius:12px}.cdc-a5-table{border-collapse:separate;border-spacing:0;min-width:1120px;width:100%;background:var(--card,#1c2229)}.cdc-a5-table th,.cdc-a5-table td{border-right:1px solid var(--line,#35404b);border-bottom:1px solid var(--line,#35404b);padding:8px 6px;text-align:center;font-size:12px}.cdc-a5-table thead th{position:sticky;top:0;z-index:5;background:var(--panel,#1b2027);font-size:10px;line-height:1.2}.cdc-a5-table th:first-child,.cdc-a5-table td:first-child{position:sticky;left:0;z-index:4;background:var(--panel,#1b2027);min-width:220px;text-align:left}.cdc-a5-table thead th:first-child{z-index:7}.cdc-a5-dish{appearance:none;border:0;background:none;color:var(--brass,#e6ab31);padding:0;text-align:left;font:inherit;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer;width:100%}.cdc-a5-mark{font-size:17px;font-weight:900}.cdc-a5-review{display:block;margin-top:4px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn,#d99b2b)}.cdc-a5-empty{padding:22px;color:var(--muted,#9ca6b3)}'+
+      '.cdc-a5-overlay{position:fixed;inset:0;z-index:10100;background:rgba(0,0,0,.74);display:flex;align-items:flex-end;justify-content:center;padding:10px}.cdc-a5-modal{width:min(860px,100%);max-height:94vh;overflow:auto;background:var(--card,#1c2229);border:1px solid var(--line,#35404b);border-radius:18px 18px 12px 12px;padding:15px;box-shadow:0 20px 60px rgba(0,0,0,.55)}.cdc-a5-modalhead{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}.cdc-a5-modalhead>div{flex:1}.cdc-a5-modalhead h3{margin:2px 0 0}.cdc-a5-kicker{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#9ca6b3)}.cdc-a5-box{border:1px solid var(--line,#35404b);background:var(--panel2,#20262e);border-radius:11px;padding:11px;margin:9px 0}.cdc-a5-box strong{display:block;margin-bottom:4px}.cdc-a5-list{display:grid;gap:8px}.cdc-a5-ing{width:100%;text-align:left;border:1px solid var(--line,#35404b);background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border-radius:11px;padding:10px;font:inherit;cursor:pointer}.cdc-a5-ing-top{display:flex;gap:10px;justify-content:space-between}.cdc-a5-ing-name{font-weight:800}.cdc-a5-meta{font-size:12px;color:var(--muted,#9ca6b3);line-height:1.4;margin-top:4px}.cdc-a5-allergens{font-size:12px;margin-top:5px}.cdc-a5-suggest{font-size:11px;color:var(--warn,#d99b2b);margin-top:4px}.cdc-a5-actions2{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px}.cdc-a5-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}.cdc-a5-field span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-a5-field input,.cdc-a5-field select,.cdc-a5-field textarea{width:100%;box-sizing:border-box;background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border:1px solid var(--line,#35404b);border-radius:10px;padding:10px;font:inherit}.cdc-a5-field textarea{min-height:140px}.cdc-a5-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px}.cdc-a5-grid .full{grid-column:1/-1}.cdc-a5-picks{display:flex;flex-wrap:wrap;gap:6px}.cdc-a5-chip{border:1px solid var(--line,#35404b);border-radius:999px;padding:8px 10px;background:var(--panel2,#20262e);color:var(--muted,#9ca6b3);font:inherit;font-size:12px}.cdc-a5-chip.on{border-color:var(--brass,#e6ab31);background:rgba(230,171,49,.16);color:var(--text,#fff);font-weight:800}.cdc-a5-warning{border:1px solid var(--warn,#d99b2b);border-radius:10px;padding:9px;font-size:12px;line-height:1.4;margin:10px 0}.cdc-a5-status{min-height:18px;font-size:12px;color:var(--muted,#9ca6b3);margin-top:8px}.cdc-a5-status.bad{color:var(--danger,#e06666)}.cdc-a5-status.good{color:var(--ok,#48b875)}'+
+      '@media(max-width:650px){.cdc-a5-scroll{max-height:calc(100vh - 250px)}.cdc-a5-table{min-width:1040px}.cdc-a5-table th:first-child,.cdc-a5-table td:first-child{min-width:175px}.cdc-a5-modal{padding:12px}.cdc-a5-grid{grid-template-columns:1fr 1fr}.cdc-a5-grid .cdc-a5-name,.cdc-a5-grid .full{grid-column:1/-1}}';
+    document.head.appendChild(st);
   }
 
-  function field(label,input){
-    var w=document.createElement('label');w.className='cdc-rw-field';
-    var t=document.createElement('span');t.textContent=label;w.append(t,input);return w;
+  function field(label,el,cls){
+    var w=document.createElement('label');w.className='cdc-a5-field'+(cls?' '+cls:'');
+    var t=document.createElement('span');t.textContent=label;w.append(t,el);return w;
   }
-  function input(type,value){var x=document.createElement('input');x.type=type||'text';x.value=value==null?'':String(value);return x;}
-  function textarea(value){var x=document.createElement('textarea');x.value=value==null?'':String(value);return x;}
+  function inp(type,val){var x=document.createElement('input');x.type=type||'text';x.value=val==null?'':String(val);return x;}
+  function textarea(val){var x=document.createElement('textarea');x.value=val==null?'':String(val);return x;}
   function stockSelect(value){
     var sel=document.createElement('select');
-    var none=document.createElement('option');none.value='';none.textContent='Not linked to Stock';sel.appendChild(none);
+    var no=document.createElement('option');no.value='';no.textContent='Not linked to Stock';sel.appendChild(no);
     stock().slice().sort(function(a,b){return stockName(a).localeCompare(stockName(b));}).forEach(function(st){
       var o=document.createElement('option');o.value=s(st.id);o.textContent=stockName(st)||s(st.id);sel.appendChild(o);
     });
-    sel.value=value==null?'':String(value);return sel;
+    sel.value=value?String(value):'';return sel;
   }
-  function allergenPicker(initial,onChange){
-    var box=document.createElement('div');box.className='cdc-rw-allergen-picker';
+  function picker(initial){
+    var box=document.createElement('div');box.className='cdc-a5-picks';
     var chosen=new Set(uniqueAllergens(initial||[]));
-    function render(){
+    function draw(){
       box.innerHTML='';
-      ALLERGENS.forEach(function(label){
-        var b=document.createElement('button');b.type='button';
-        b.className='cdc-rw-allergen-chip'+(chosen.has(label)?' on':'');
-        b.textContent=label;b.setAttribute('aria-pressed',chosen.has(label)?'true':'false');
-        b.onclick=function(){
-          if(chosen.has(label))chosen.delete(label);else chosen.add(label);
-          render();if(onChange)onChange(Array.from(chosen));
-        };
+      ALLERGENS.forEach(function(a){
+        var b=document.createElement('button');b.type='button';b.className='cdc-a5-chip'+(chosen.has(a)?' on':'');b.textContent=a;
+        b.setAttribute('aria-pressed',chosen.has(a)?'true':'false');
+        b.onclick=function(){if(chosen.has(a))chosen.delete(a);else chosen.add(a);draw();};
         box.appendChild(b);
       });
     }
     box.value=function(){return ALLERGENS.filter(function(a){return chosen.has(a);});};
-    box.setValue=function(values){chosen=new Set(uniqueAllergens(values));render();if(onChange)onChange(box.value());};
-    render();return box;
+    box.setValue=function(v){chosen=new Set(uniqueAllergens(v));draw();};
+    draw();return box;
   }
 
-  function buildIngredientRow(ing,container,onRecipePreview){
-    ing=ing||{};
-    var row=document.createElement('div');row.className='cdc-rw-edit-ing';
-    var name=input('text',ing.name||'');name.placeholder='Ingredient';
-    var qty=input('number',ing.qty==null?'':ing.qty);qty.step='any';qty.min='0.0001';qty.inputMode='decimal';
-    var unit=input('text',ing.unit||'');unit.placeholder='g / kg / ml / L / each';
-    var link=stockSelect(ing.stockId||'');
-    var prep=input('text',ing.preparation||ing.note||'');prep.placeholder='Preparation / note';
-    var remove=document.createElement('button');remove.type='button';remove.className='btn danger';remove.textContent='Remove ingredient';
-    var purchase=document.createElement('div');purchase.className='cdc-rw-row-note';
-    var alHead=document.createElement('div');alHead.className='cdc-rw-allergen-head';
-    var alLabel=document.createElement('strong');alLabel.textContent='Ingredient allergens';
-    var alHelp=document.createElement('span');alHelp.textContent='Tap to select what this actual ingredient contains.';
-    alHead.append(alLabel,alHelp);
-    var picker=allergenPicker(ingredientAllergens(ing),function(){if(onRecipePreview)onRecipePreview();});
-    var spec=document.createElement('div');spec.className='cdc-rw-row-note';
-    var useSpec=document.createElement('button');useSpec.type='button';useSpec.className='btn ghost cdc-rw-use-spec';useSpec.textContent='Use Stock/spec allergens';useSpec.style.display='none';
-
-    function refresh(){
-      var probe={name:name.value,qty:qty.value,unit:unit.value,stockId:link.value};
-      purchase.textContent=purchasingLine(probe).text;
-      var st=stockById(link.value), declared=stockDeclaredAllergens(st);
-      if(declared.length){
-        spec.textContent='Linked Stock/spec allergens: '+declared.join(', ');
-        useSpec.style.display='';
-        useSpec.onclick=function(){picker.setValue(declared);};
-      }else{
-        spec.textContent=link.value?'No allergen declaration saved on this Stock item.':'Stock link is optional.';
-        useSpec.style.display='none';
-      }
-    }
-    [name,qty,unit,link].forEach(function(el){el.addEventListener('input',refresh);el.addEventListener('change',refresh);});
-    remove.onclick=function(){row.remove();if(onRecipePreview)onRecipePreview();};
-
-    row.append(
-      field('Ingredient',name),field('Qty',qty),field('Unit',unit),field('Stock link (optional)',link),field('Preparation / note',prep),
-      remove,alHead,picker,spec,useSpec,purchase
-    );
-    row._read=function(){
-      var nm=name.value.trim();if(!nm)return null;
-      var q=Number(qty.value);if(!Number.isFinite(q)||q<=0)throw new Error('Give '+nm+' a quantity greater than zero.');
-      var u=unit.value.trim();if(!u)throw new Error('Give '+nm+' a unit.');
-      var out={name:nm,qty:q,unit:u,allergens:picker.value()};
-      if(prep.value.trim())out.preparation=prep.value.trim();
-      if(link.value)out.stockId=link.value;
-      return out;
-    };
-    row._allergens=function(){return picker.value();};
-    container.appendChild(row);refresh();return row;
-  }
-
-  function outputText(r){
-    try{
-      var joined=(r.output||[]).flatMap(function(o){return o.content||[];}).map(function(c){return c.text||c.output_text||'';}).join(' ').trim();
-      return joined||r.output_text||'';
-    }catch(e){return r&&r.output_text||'';}
-  }
-  function parseJsonLoose(t){
-    var x=s(t).trim().replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
-    try{return JSON.parse(x);}catch(e){}
-    var a=x.indexOf('{'),b=x.lastIndexOf('}');
-    if(a>=0&&b>a)return JSON.parse(x.slice(a,b+1));
-    throw new Error('Could not read the ingredient draft.');
-  }
-
-  var bulkRun=false;
-  var bulkTimer=null;
-  var BULK_LOCK_KEY='cdc_bulk_ingredient_drafts_lock_v1';
-
-  function managerCanEdit(){
-    try{if(typeof isMgr==='function')return !!isMgr();}catch(e){}
-    try{return !!(window.ME&&String(ME.role||'').toLowerCase()==='manager');}catch(e){}
-    return true;
-  }
-  function missingIngredientRecipes(){
-    return recipes().filter(function(r){return r&&(!Array.isArray(r.ingredients)||r.ingredients.length===0);});
-  }
-  function bulkProgress(){
-    var box=document.getElementById('cdc-bulk-ingredient-progress');
-    if(box)return box;
-    box=document.createElement('div');box.id='cdc-bulk-ingredient-progress';box.className='cdc-bulk-ingredient-progress';
-    box.innerHTML='<strong>Completing recipe ingredients</strong><span>Preparing…</span><button type="button" class="btn ghost">Hide</button>';
-    box.querySelector('button').onclick=function(){box.style.display='none';};
-    document.body.appendChild(box);return box;
-  }
-  function setBulkProgress(title,detail,bad){
-    var box=bulkProgress();box.style.display='';
-    var strong=box.querySelector('strong'),span=box.querySelector('span');
-    if(strong)strong.textContent=title;if(span)span.textContent=detail||'';
-    box.classList.toggle('bad',!!bad);
-  }
-  function readBulkLock(){try{var n=Number(localStorage.getItem(BULK_LOCK_KEY)||0);return Number.isFinite(n)?n:0;}catch(e){return 0;}}
-  function writeBulkLock(value){try{if(value)localStorage.setItem(BULK_LOCK_KEY,String(value));else localStorage.removeItem(BULK_LOCK_KEY);}catch(e){}}
-  function cleanDraftIngredients(items){
-    var out=[];
-    (Array.isArray(items)?items:[]).forEach(function(raw){
-      if(!raw||typeof raw!=='object')return;
-      var nm=s(raw.name).trim();if(!nm)return;
-      var q=Number(raw.qty),u=s(raw.unit).trim();
-      if(!Number.isFinite(q)||q<=0||!u)return;
-      var ing={name:nm,qty:q,unit:u,allergens:[]};
-      var prep=s(raw.preparation||raw.note).trim();if(prep)ing.preparation=prep;
-      out.push(ing);
-    });
-    return out;
-  }
-  async function generateIngredientDraft(recipe){
-    if(typeof api!=='function')throw new Error('AI service is unavailable.');
-    var prompt='Create a practical commercial-kitchen INGREDIENT DRAFT for this existing recipe. Return JSON only: {"ingredients":[{"name":"","qty":0,"unit":"g","preparation":""}],"method":[""]}. Use the stated yield and the existing method/description. Include every meaningful component that would need ordering or prep. Use practical units such as g, kg, ml, L, each, pack, tin, bottle or bunch. Do NOT return allergens. Do NOT claim quantities are verified supplier facts. Recipe: '+JSON.stringify({name:recipe.name,description:recipe.description||'',yield:recipe.yield||recipe.portions||'',method:recipe.method||''});
-    var res=await api('/api/openai/responses',{method:'POST',body:JSON.stringify({model:'gpt-4o-mini',input:[{role:'user',content:[{type:'input_text',text:prompt}]}]})});
-    var data=parseJsonLoose(outputText(res));
-    var items=cleanDraftIngredients(data.ingredients);
-    if(!items.length)throw new Error('No usable ingredients came back.');
-    return {ingredients:items,method:Array.isArray(data.method)?data.method.map(function(x){return s(x).trim();}).filter(Boolean):[]};
-  }
-  async function runBulkIngredientDrafts(){
-    if(bulkRun||!managerCanEdit())return;
-    var pending=missingIngredientRecipes();if(!pending.length)return;
-    var lock=readBulkLock(),now=Date.now();if(lock&&now-lock<15*60*1000)return;
-    bulkRun=true;writeBulkLock(now);
-    var total=pending.length,done=0,failed=[];
-    setBulkProgress('Completing recipe ingredients','0 / '+total+' completed');
-    try{
-      for(var i=0;i<pending.length;i++){
-        var recipe=recipeById(pending[i].id)||pending[i];
-        if(Array.isArray(recipe.ingredients)&&recipe.ingredients.length){done++;continue;}
-        setBulkProgress('Completing recipe ingredients',(i+1)+' / '+total+' · '+s(recipe.name).slice(0,70));
-        var snapshot=JSON.parse(JSON.stringify(recipe));
-        try{
-          var draft=await generateIngredientDraft(recipe);
-          recipe.ingredients=draft.ingredients;
-          if(draft.method.length)recipe.method=draft.method;
-          recipe.needsReview=true;
-          recipe.allergenVerified=false;
-          recipe.allergenSyncStatus='Needs review after ingredient draft';
-          recipe.ingredientDraftGenerated=true;
-          recipe.ingredientDraftGeneratedAt=new Date().toISOString();
-          if(typeof audit==='function')audit('recipe_ingredients_drafted',recipe.name+' · '+recipe.ingredients.length+' ingredients');
-          await saveState('bulk ingredient draft · '+recipe.name);
-          done++;
-          setBulkProgress('Completing recipe ingredients',done+' / '+total+' saved');
-        }catch(err){
-          Object.keys(recipe).forEach(function(k){delete recipe[k];});Object.assign(recipe,snapshot);
-          failed.push(recipe.name);
-          console.warn('[Command de Cuisine] ingredient draft failed for',recipe.name,err);
-        }
-        await new Promise(function(resolve){setTimeout(resolve,250);});
-      }
-      if(typeof rerender==='function')try{rerender();}catch(e){}
-      if(failed.length)setBulkProgress('Ingredient drafts mostly complete',done+' saved · '+failed.length+' need retry',true);
-      else{
-        setBulkProgress('Ingredient drafts complete',done+' recipes filled. Check actual products/allergens before approval.');
-        setTimeout(function(){var x=document.getElementById('cdc-bulk-ingredient-progress');if(x)x.style.display='none';},5000);
-      }
-    }finally{bulkRun=false;writeBulkLock(0);}
-  }
-  function scheduleBulkIngredientDrafts(){
-    clearTimeout(bulkTimer);
-    bulkTimer=setTimeout(function(){if(missingIngredientRecipes().length)runBulkIngredientDrafts();},700);
-  }
-
-  function openEditor(recipe){
+  function openDish(recipe){
     if(!recipe)return;
-    closeWorkspace();
-    var overlay=document.createElement('div');overlay.id=OVERLAY;overlay.className='cdc-rw-overlay';
-    var modal=document.createElement('div');modal.className='cdc-rw-modal cdc-rw-editor';overlay.appendChild(modal);
-    var head=document.createElement('div');head.className='cdc-rw-head';
-    head.innerHTML='<div><div class="cdc-rw-kicker">Edit recipe</div><h3>'+esc(recipe.name||'Recipe')+'</h3></div>';
-    var close=document.createElement('button');close.type='button';close.className='btn ghost';close.textContent='Close';close.onclick=closeWorkspace;head.appendChild(close);modal.appendChild(head);
+    closeOverlay();
+    var overlay=document.createElement('div');overlay.id=OVERLAY;overlay.className='cdc-a5-overlay';
+    var modal=document.createElement('div');modal.className='cdc-a5-modal';overlay.appendChild(modal);
+    var head=document.createElement('div');head.className='cdc-a5-modalhead';
+    head.innerHTML='<div><div class="cdc-a5-kicker">Recipe & allergen workspace</div><h3>'+esc(recipe.name||'Recipe')+'</h3></div>';
+    var close=document.createElement('button');close.type='button';close.className='btn ghost';close.textContent='Close';close.onclick=closeOverlay;head.appendChild(close);modal.appendChild(head);
 
-    var status=document.createElement('div');status.className='cdc-rw-status';
-    var yieldEl=input('text',recipe.yield||recipe.portions||'');
-    var method=textarea(Array.isArray(recipe.method)?recipe.method.join('\n'):recipe.method||'');
-    modal.append(field('Yield / portions',yieldEl));
+    var current=recipeAllergens(recipe);
+    var summary=document.createElement('div');summary.className='cdc-a5-box';
+    summary.innerHTML='<strong>Recipe allergen summary</strong><div>'+esc(current.length?current.join(', '):'None currently selected')+'</div>'+
+      (recipe.allergenReviewRequired?'<span class="cdc-a5-review">Needs allergen review</span>':'');
+    modal.appendChild(summary);
 
-    var section=document.createElement('div');section.className='cdc-rw-section';section.textContent='Ingredients';modal.appendChild(section);
-    var intro=document.createElement('div');intro.className='cdc-rw-meta';intro.textContent='Ingredients do not have to exist in Stock. Link them only when useful for stock levels, costing and order requirements.';modal.appendChild(intro);
-    var rows=document.createElement('div');rows.className='cdc-rw-edit-list';modal.appendChild(rows);
+    var note=document.createElement('div');note.className='cdc-a5-meta';
+    note.textContent='Tap an ingredient to edit its quantity, optional Stock link and allergens. Nothing changes until you press Save ingredient.';
+    modal.appendChild(note);
 
-    var existing=Array.isArray(recipe.ingredients)?recipe.ingredients:[];
-    var oldRecipeAllergens=parseAllergens(recipe.allergens);
-    var existingIngRollup=rollup(existing,[]);
-    var extras=oldRecipeAllergens.filter(function(a){return existingIngRollup.indexOf(a)<0;});
-
-    var preview=document.createElement('div');preview.className='cdc-rw-box cdc-rw-preview';
-    var extraTitle=document.createElement('div');extraTitle.className='cdc-rw-section';extraTitle.textContent='Additional recipe allergens';
-    var extraHelp=document.createElement('div');extraHelp.className='cdc-rw-meta';extraHelp.textContent='Use these only for allergens that apply to the finished dish but are not yet assigned to an ingredient.';
-    var extraPicker=allergenPicker(extras,refreshPreview);
-
-    function collectRowAllergens(){
-      var all=[];
-      [].slice.call(rows.querySelectorAll('.cdc-rw-edit-ing')).forEach(function(row){if(row._allergens)all=all.concat(row._allergens());});
-      return uniqueAllergens(all);
+    var list=document.createElement('div');list.className='cdc-a5-list';
+    var items=Array.isArray(recipe.ingredients)?recipe.ingredients:[];
+    if(!items.length){
+      var empty=document.createElement('div');empty.className='cdc-a5-empty';empty.textContent='No ingredients saved yet.';
+      list.appendChild(empty);
+    }else{
+      items.forEach(function(ing,index){
+        var b=document.createElement('button');b.type='button';b.className='cdc-a5-ing';
+        var als=ingredientAllergens(ing),suggest=ingredientSuggestions(ing),st=ingredientStock(ing);
+        b.innerHTML='<div class="cdc-a5-ing-top"><span class="cdc-a5-ing-name">'+esc(ing.name||'Ingredient')+'</span><span>'+esc([ing.qty,ing.unit].filter(function(v){return v!=null&&s(v)!=='';}).join(' '))+'</span></div>'+
+          (ing.preparation?'<div class="cdc-a5-meta">'+esc(ing.preparation)+'</div>':'')+
+          '<div class="cdc-a5-allergens"><b>Allergens:</b> '+esc(als.length?als.join(', '):'None selected')+'</div>'+
+          (suggest.length?'<div class="cdc-a5-suggest">Draft suggestion: '+esc(suggest.join(', '))+' — check the actual product label/spec.</div>':'')+
+          '<div class="cdc-a5-meta">'+esc(st?'Stock link: '+stockName(st):'Not linked to Stock')+' · '+esc(purchasingLine(ing))+'</div>';
+        b.onclick=function(){openIngredient(recipeById(recipe.id)||recipe,index);};
+        list.appendChild(b);
+      });
     }
-    function refreshPreview(){
-      var summary=rollup([],collectRowAllergens().concat(extraPicker.value()));
-      preview.innerHTML='<strong>Recipe allergen summary after save</strong><div>'+esc(summary.length?summary.join(', '):'None selected')+'</div>';
-    }
+    modal.appendChild(list);
 
-    existing.forEach(function(ing){buildIngredientRow(ing,rows,refreshPreview);});
-    if(!existing.length)buildIngredientRow({},rows,refreshPreview);
-
-    var add=document.createElement('button');add.type='button';add.className='btn ghost';add.textContent='+ Add ingredient';
-    add.onclick=function(){buildIngredientRow({},rows,refreshPreview);refreshPreview();};modal.appendChild(add);
-    modal.append(extraTitle,extraHelp,extraPicker,preview);
-
-    var warn=document.createElement('div');warn.className='cdc-rw-warning';warn.textContent='Allergens are safety-critical. Select allergens from the actual ingredient label/spec you use. The app will not guess from an ingredient name.';modal.appendChild(warn);
-    modal.append(field('Method',method));
-
-    var tools=document.createElement('div');tools.className='cdc-rw-tools';
-    var draft=document.createElement('button');draft.type='button';draft.className='btn ghost';draft.textContent=existing.length?'Rebuild ingredient draft':'Build ingredient draft';
-    tools.appendChild(draft);modal.appendChild(tools);
-    modal.appendChild(status);
-
-    var actions=document.createElement('div');actions.className='cdc-rw-actions';
-    var saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.className='btn primary';saveBtn.textContent='Save recipe & update matrix';
-    actions.appendChild(saveBtn);modal.appendChild(actions);
-
-    draft.onclick=async function(){
-      draft.disabled=true;status.className='cdc-rw-status';status.textContent='Building ingredient draft…';
-      try{
-        if(typeof api!=='function')throw new Error('AI service is unavailable.');
-        var prompt='Create an editable ingredient and method DRAFT for this kitchen recipe. Return JSON only: {"ingredients":[{"name":"","qty":0,"unit":"g","preparation":""}],"method":[""]}. Use practical commercial-kitchen quantities for the stated yield. Do NOT return allergens and do NOT claim anything is verified. Recipe: '+JSON.stringify({name:recipe.name,description:recipe.description||'',yield:yieldEl.value||recipe.yield||'',method:method.value||recipe.method||''});
-        var res=await api('/api/openai/responses',{method:'POST',body:JSON.stringify({model:'gpt-4o-mini',input:[{role:'user',content:[{type:'input_text',text:prompt}]}]})});
-        var data=parseJsonLoose(outputText(res));
-        if(!Array.isArray(data.ingredients)||!data.ingredients.length)throw new Error('No ingredients came back.');
-        rows.innerHTML='';
-        data.ingredients.forEach(function(ing){buildIngredientRow(ing,rows,refreshPreview);});
-        if(Array.isArray(data.method)&&data.method.length)method.value=data.method.join('\n');
-        refreshPreview();
-        status.className='cdc-rw-status good';status.textContent='Draft built. Now check quantities and select allergens from the ingredients you actually use.';
-      }catch(err){
-        status.className='cdc-rw-status bad';status.textContent='Could not build draft: '+(err&&err.message?err.message:String(err));
-      }finally{draft.disabled=false;}
+    var actions=document.createElement('div');actions.className='cdc-a5-actions2';
+    var add=document.createElement('button');add.type='button';add.className='btn ghost';add.textContent='+ Add ingredient';add.onclick=function(){openIngredient(recipeById(recipe.id)||recipe,-1);};
+    var details=document.createElement('button');details.type='button';details.className='btn ghost';details.textContent='Edit yield / method';details.onclick=function(){openRecipeDetails(recipeById(recipe.id)||recipe);};
+    var reviewed=document.createElement('button');reviewed.type='button';reviewed.className='btn primary';reviewed.textContent='Mark allergen review complete';
+    reviewed.onclick=async function(){
+      var r=recipeById(recipe.id)||recipe;
+      snapshotVersion(r,'allergen review complete');
+      r.allergenReviewRequired=false;
+      if(typeof audit==='function')try{audit('recipe_allergens_reviewed',r.name);}catch(e){}
+      try{await saveState('recipe allergen review complete');notify('Allergen review marked complete');if(typeof rerender==='function')rerender();openDish(r);}
+      catch(err){notify('Could not save allergen review',true);}
     };
-
-    saveBtn.onclick=async function(){
-      saveBtn.disabled=true;status.className='cdc-rw-status';status.textContent='Saving…';
-      var snapshot=JSON.parse(JSON.stringify(recipe));
-      try{
-        var items=[];
-        [].slice.call(rows.querySelectorAll('.cdc-rw-edit-ing')).forEach(function(row){var x=row._read();if(x)items.push(x);});
-        if(!items.length)throw new Error('Add at least one ingredient.');
-        var summary=rollup(items,extraPicker.value());
-        recipe.ingredients=items;
-        recipe.yield=yieldEl.value.trim()||recipe.yield||'1';
-        recipe.allergens=summary.join(', ');
-        recipe.method=method.value.split(/\n+/).map(function(x){return x.trim();}).filter(Boolean);
-        recipe.allergenVerified=false;
-        recipe.allergenSyncStatus=ALLERGEN_STATUS;
-        recipe.needsReview=true;
-        recipe.ingredientAllergensManaged=true;
-        if(typeof audit==='function')audit('recipe_updated',recipe.name+' · ingredients / ingredient allergens / stock links');
-        await saveState('update recipe ingredients and allergens');
-        if(typeof rerender==='function')rerender();
-        status.className='cdc-rw-status good';status.textContent='Recipe saved. Allergen matrix updated from its ingredients.';
-        setTimeout(function(){showInspector(recipeById(recipe.id)||recipe);},160);
-      }catch(err){
-        Object.keys(recipe).forEach(function(k){delete recipe[k];});Object.assign(recipe,snapshot);
-        status.className='cdc-rw-status bad';status.textContent='Not saved: '+(err&&err.message?err.message:String(err));saveBtn.disabled=false;
-      }
-    };
-
+    actions.append(add,details,reviewed);
+    modal.appendChild(actions);
     document.body.appendChild(overlay);
-    overlay.addEventListener('click',function(e){if(e.target===overlay)closeWorkspace();});
-    refreshPreview();
+    overlay.onclick=function(e){if(e.target===overlay)closeOverlay();};
   }
 
-  function findMatrix(){
-    var tables=[].slice.call(document.querySelectorAll('table'));
-    for(var i=0;i<tables.length;i++){
-      var t=tables[i],tx=norm(t.textContent);
-      if(tx.indexOf('gluten')>=0&&tx.indexOf('egg')>=0&&(tx.indexOf('milk')>=0||tx.indexOf('dairy')>=0))return t;
+  function openIngredient(recipe,index){
+    if(!recipe)return;
+    var existing=index>=0&&Array.isArray(recipe.ingredients)?recipe.ingredients[index]:null;
+    closeOverlay();
+    var overlay=document.createElement('div');overlay.id=OVERLAY;overlay.className='cdc-a5-overlay';
+    var modal=document.createElement('div');modal.className='cdc-a5-modal';overlay.appendChild(modal);
+    var head=document.createElement('div');head.className='cdc-a5-modalhead';
+    head.innerHTML='<div><div class="cdc-a5-kicker">'+(existing?'Edit ingredient':'Add ingredient')+'</div><h3>'+esc(recipe.name||'Recipe')+'</h3></div>';
+    var back=document.createElement('button');back.type='button';back.className='btn ghost';back.textContent='Back';back.onclick=function(){openDish(recipeById(recipe.id)||recipe);};head.appendChild(back);modal.appendChild(head);
+
+    var grid=document.createElement('div');grid.className='cdc-a5-grid';
+    var name=inp('text',existing&&existing.name||'');var qty=inp('number',existing&&existing.qty!=null?existing.qty:'');qty.step='any';qty.min='0.0001';qty.inputMode='decimal';
+    var unit=inp('text',existing&&existing.unit||'');var prep=inp('text',existing&&(existing.preparation||existing.note)||'');
+    var link=stockSelect(existing&&existing.stockId||'');
+    grid.append(field('Ingredient',name,'cdc-a5-name'),field('Qty',qty),field('Unit',unit),field('Preparation / note',prep,'full'),field('Stock link (optional)',link,'full'));
+    modal.appendChild(grid);
+
+    var warn=document.createElement('div');warn.className='cdc-a5-warning';
+    warn.textContent='Choose allergens from the actual ingredient/packaging you use. The matrix itself cannot be tapped to change allergens.';
+    modal.appendChild(warn);
+
+    var pickerBox=picker(existing?ingredientAllergens(existing):[]);
+    var label=document.createElement('div');label.className='cdc-a5-box';label.innerHTML='<strong>Ingredient allergens</strong><div class="cdc-a5-meta">Tap to select or remove. Changes apply only when you save this ingredient.</div>';
+    label.appendChild(pickerBox);modal.appendChild(label);
+
+    var suggestions=existing?ingredientSuggestions(existing):[];
+    if(suggestions.length){
+      var sg=document.createElement('div');sg.className='cdc-a5-box';
+      sg.innerHTML='<strong>Draft suggestions</strong><div>'+esc(suggestions.join(', '))+'</div><div class="cdc-a5-meta">These are not treated as selected until you apply/check them.</div>';
+      var apply=document.createElement('button');apply.type='button';apply.className='btn ghost';apply.textContent='Apply suggestions';apply.style.marginTop='8px';apply.onclick=function(){pickerBox.setValue(suggestions);};sg.appendChild(apply);modal.appendChild(sg);
     }
-    return null;
-  }
-  function matrixEvent(ev){
-    var table=ev.currentTarget;
-    var cell=ev.target&&ev.target.closest?ev.target.closest('td,th'):null;
-    if(!cell||!table.contains(cell))return;
-    var row=cell.parentElement, first=row&&row.children&&row.children[0];
-    var bodyRow=row&&row.parentElement&&String(row.parentElement.tagName).toLowerCase()==='tbody';
-    if(bodyRow&&cell===first){
-      var recipe=recipeByName(text(first));
-      if(recipe){
-        ev.preventDefault();ev.stopPropagation();if(typeof ev.stopImmediatePropagation==='function')ev.stopImmediatePropagation();
-        showInspector(recipe);return;
+
+    var status=document.createElement('div');status.className='cdc-a5-status';modal.appendChild(status);
+    var actions=document.createElement('div');actions.className='cdc-a5-actions2';
+    if(existing){
+      var del=document.createElement('button');del.type='button';del.className='btn danger';del.textContent='Remove ingredient';
+      del.onclick=async function(){
+        if(!window.confirm('Remove '+(existing.name||'this ingredient')+' from this recipe?'))return;
+        var r=recipeById(recipe.id)||recipe;snapshotVersion(r,'remove recipe ingredient');
+        r.ingredients.splice(index,1);recomputeRecipeAllergens(r);
+        try{if(typeof audit==='function')audit('recipe_ingredient_removed',r.name+' · '+(existing.name||''));await saveState('remove recipe ingredient');if(typeof rerender==='function')rerender();openDish(r);}
+        catch(err){status.className='cdc-a5-status bad';status.textContent='Could not remove ingredient: '+(err&&err.message||err);}
+      };
+      actions.appendChild(del);
+    }
+    var saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.className='btn primary';saveBtn.textContent='Save ingredient';
+    saveBtn.onclick=async function(){
+      status.className='cdc-a5-status';status.textContent='Saving…';saveBtn.disabled=true;
+      try{
+        var nm=name.value.trim(),q=Number(qty.value),u=unit.value.trim();
+        if(!nm)throw new Error('Ingredient name is required.');
+        if(!Number.isFinite(q)||q<=0)throw new Error('Quantity must be greater than zero.');
+        if(!u)throw new Error('Unit is required.');
+        var r=recipeById(recipe.id)||recipe;snapshotVersion(r,'edit recipe ingredient');
+        r.ingredients=Array.isArray(r.ingredients)?r.ingredients:[];
+        var next={name:nm,qty:q,unit:u,allergens:pickerBox.value(),allergenSource:'manager-edit',allergenReviewedAt:new Date().toISOString()};
+        if(prep.value.trim())next.preparation=prep.value.trim();
+        if(link.value)next.stockId=link.value;
+        if(existing&&existing.allergenSuggestions)next.allergenSuggestions=existing.allergenSuggestions;
+        if(index>=0)r.ingredients[index]=next;else r.ingredients.push(next);
+        recomputeRecipeAllergens(r);
+        if(typeof audit==='function')try{audit('recipe_ingredient_updated',r.name+' · '+nm);}catch(e){}
+        await saveState('update recipe ingredient');
+        if(typeof rerender==='function')rerender();
+        notify('Ingredient saved · matrix updated');
+        openDish(r);
+      }catch(err){
+        status.className='cdc-a5-status bad';status.textContent='Not saved: '+(err&&err.message?err.message:String(err));saveBtn.disabled=false;
       }
-    }
-    if(bodyRow){
-      ev.preventDefault();ev.stopPropagation();if(typeof ev.stopImmediatePropagation==='function')ev.stopImmediatePropagation();
-    }
-  }
-  function protectTable(table){
-    if(!table||!table.isConnected)return false;
-    if(table.dataset.cdcSafeAllergen==='1')return true;
-    table.dataset.cdcSafeAllergen='1';table.classList.add('cdc-allergen-safe-table');
-    var parent=table.parentElement;
-    if(parent)parent.classList.add('cdc-allergen-scroll');
-
-    [].slice.call(table.querySelectorAll('tbody tr')).forEach(function(row){
-      var cell=row.children&&row.children[0];if(!cell)return;
-      var recipe=recipeByName(text(cell));
-      if(recipe){cell.classList.add('cdc-allergen-dish-cell');cell.setAttribute('role','button');cell.setAttribute('tabindex','0');cell.dataset.recipeId=recipe.id;}
-    });
-    ['click','change','input','dblclick','contextmenu'].forEach(function(name){table.addEventListener(name,matrixEvent,true);});
-    table.addEventListener('keydown',function(e){
-      var cell=e.target&&e.target.closest?e.target.closest('td,th'):null;
-      if(cell&&cell.classList.contains('cdc-allergen-dish-cell')&&(e.key==='Enter'||e.key===' ')){
-        e.preventDefault();var r=recipeById(cell.dataset.recipeId)||recipeByName(text(cell));if(r)showInspector(r);return;
-      }
-      if(cell&&cell.closest('tbody')){e.preventDefault();e.stopPropagation();}
-    },true);
-
-    if(parent&&!parent.querySelector(':scope > .cdc-allergen-safe-note')){
-      var note=document.createElement('div');note.className='cdc-allergen-safe-note';
-      note.innerHTML='<strong>View-only allergen matrix</strong><span>Tap a dish name to open its recipe. Change allergens on the actual ingredients; saving the recipe updates this matrix.</span>';
-      var pending=missingIngredientRecipes().length;
-      if(pending){
-        var bulkBtn=document.createElement('button');bulkBtn.type='button';bulkBtn.className='btn ghost cdc-allergen-bulk-btn';
-        bulkBtn.textContent='Complete '+pending+' missing ingredient draft'+(pending===1?'':'s');
-        bulkBtn.onclick=function(e){e.preventDefault();e.stopPropagation();writeBulkLock(0);runBulkIngredientDrafts();};
-        note.appendChild(bulkBtn);
-      }
-      parent.insertBefore(note,table);
-    }
-    return true;
+    };
+    actions.appendChild(saveBtn);modal.appendChild(actions);
+    document.body.appendChild(overlay);
+    overlay.onclick=function(e){if(e.target===overlay)openDish(recipeById(recipe.id)||recipe);};
   }
 
-  function css(){
-    if(document.getElementById('cdc-rw-style'))return;
-    var st=document.createElement('style');st.id='cdc-rw-style';st.textContent=
-      '.cdc-allergen-safe-note{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;padding:11px 12px;border:1px solid var(--line,#35404b);border-radius:11px;background:var(--panel2,#20262e);position:sticky;left:0;z-index:9}.cdc-allergen-safe-note span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-allergen-bulk-btn{align-self:flex-start;margin-top:4px}.cdc-bulk-ingredient-progress{position:fixed;left:12px;right:12px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:10120;max-width:720px;margin:auto;padding:12px;border:1px solid var(--brass,#e6ab31);border-radius:12px;background:var(--card,#1c2229);box-shadow:0 12px 34px rgba(0,0,0,.4);display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center}.cdc-bulk-ingredient-progress strong{grid-column:1}.cdc-bulk-ingredient-progress span{grid-column:1;color:var(--muted,#9ca6b3);font-size:12px}.cdc-bulk-ingredient-progress button{grid-column:2;grid-row:1/3}.cdc-bulk-ingredient-progress.bad{border-color:var(--warn,#d99b2b)}'+
-      '.cdc-allergen-scroll{overflow:auto!important;-webkit-overflow-scrolling:touch}.cdc-allergen-safe-table{min-width:1000px;border-collapse:separate!important;border-spacing:0!important}.cdc-allergen-safe-table thead th{position:sticky!important;top:0!important;z-index:6!important;background:var(--panel,#1b2027)!important}.cdc-allergen-safe-table th:first-child,.cdc-allergen-safe-table td:first-child{position:sticky!important;left:0!important;z-index:5!important;background:var(--panel,#1b2027)!important;min-width:145px!important}.cdc-allergen-safe-table thead th:first-child{z-index:8!important}.cdc-allergen-safe-table th:not(:first-child),.cdc-allergen-safe-table td:not(:first-child){min-width:68px;text-align:center}.cdc-allergen-dish-cell{cursor:pointer!important;color:var(--brass,#e6ab31)!important;font-weight:800!important;text-decoration:underline;text-underline-offset:3px}'+
-      '.cdc-rw-overlay{position:fixed;inset:0;z-index:10080;background:rgba(0,0,0,.74);display:flex;align-items:flex-end;justify-content:center;padding:10px}.cdc-rw-modal{width:min(900px,100%);max-height:94vh;overflow:auto;background:var(--card,#1c2229);border:1px solid var(--line,#35404b);border-radius:18px 18px 12px 12px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.55)}.cdc-rw-head{display:flex;gap:10px;align-items:flex-start;margin-bottom:12px}.cdc-rw-head>div{flex:1}.cdc-rw-head h3{margin:2px 0 0}.cdc-rw-kicker{text-transform:uppercase;letter-spacing:.08em;font-size:11px;color:var(--muted,#9ca6b3)}.cdc-rw-box{padding:11px;border:1px solid var(--line,#35404b);border-radius:11px;background:var(--panel2,#20262e);margin-bottom:12px}.cdc-rw-box>div{margin-top:4px}.cdc-rw-section{font-weight:800;margin:14px 0 8px}.cdc-rw-meta{font-size:12px;color:var(--muted,#9ca6b3);line-height:1.4}.cdc-rw-list{display:grid;gap:9px}.cdc-rw-ing{padding:10px;border:1px solid var(--line,#35404b);border-radius:10px}.cdc-rw-ing-head{display:flex;gap:10px;justify-content:space-between}.cdc-rw-allergen-line{font-size:12px;margin-top:6px}.cdc-rw-purchase{font-size:12px;margin-top:6px}.cdc-rw-purchase.short{color:var(--warn,#d99b2b)}.cdc-rw-purchase.ok{color:var(--ok,#48b875)}.cdc-rw-empty{display:flex;flex-direction:column;gap:5px;padding:16px;border:1px dashed var(--line,#35404b);border-radius:11px}.cdc-rw-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}.cdc-rw-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}.cdc-rw-field>span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-rw-field input,.cdc-rw-field select,.cdc-rw-field textarea{width:100%;box-sizing:border-box;background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border:1px solid var(--line,#35404b);border-radius:9px;padding:10px;font:inherit}.cdc-rw-field textarea{min-height:120px}.cdc-rw-edit-list{display:grid;gap:12px}.cdc-rw-edit-ing{display:grid;grid-template-columns:2fr .8fr .8fr 1.4fr 2fr auto;gap:8px;align-items:end;padding:12px;border:1px solid var(--line,#35404b);border-radius:12px}.cdc-rw-edit-ing .cdc-rw-field{margin:0}.cdc-rw-row-note,.cdc-rw-allergen-head,.cdc-rw-allergen-picker,.cdc-rw-use-spec{grid-column:1/-1}.cdc-rw-allergen-head{display:flex;flex-direction:column;gap:2px}.cdc-rw-allergen-head span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-rw-allergen-picker{display:flex;flex-wrap:wrap;gap:6px}.cdc-rw-allergen-chip{border:1px solid var(--line,#35404b);border-radius:999px;padding:7px 10px;background:var(--panel2,#20262e);color:var(--muted,#9ca6b3);font:inherit;font-size:12px}.cdc-rw-allergen-chip.on{background:rgba(230,171,49,.16);border-color:var(--brass,#e6ab31);color:var(--text,#fff);font-weight:800}.cdc-rw-warning{padding:10px;border:1px solid var(--warn,#d99b2b);border-radius:10px;font-size:12px;line-height:1.4;margin:12px 0}.cdc-rw-tools{display:flex;gap:8px;margin-top:10px}.cdc-rw-status{min-height:20px;font-size:12px;color:var(--muted,#9ca6b3);margin-top:8px}.cdc-rw-status.bad{color:var(--danger,#e06666)}.cdc-rw-status.good{color:var(--ok,#48b875)}'+
-      '@media(max-width:720px){.cdc-rw-edit-ing{grid-template-columns:1fr 1fr}.cdc-rw-edit-ing .cdc-rw-field:first-child,.cdc-rw-edit-ing .cdc-rw-field:nth-child(4),.cdc-rw-edit-ing .cdc-rw-field:nth-child(5),.cdc-rw-row-note,.cdc-rw-allergen-head,.cdc-rw-allergen-picker,.cdc-rw-use-spec{grid-column:1/-1}.cdc-rw-edit-ing>.btn{grid-column:1/-1}.cdc-rw-modal{padding:13px}.cdc-allergen-safe-table{min-width:960px}}';
-    document.head.appendChild(st);
+  function openRecipeDetails(recipe){
+    closeOverlay();
+    var overlay=document.createElement('div');overlay.id=OVERLAY;overlay.className='cdc-a5-overlay';
+    var modal=document.createElement('div');modal.className='cdc-a5-modal';overlay.appendChild(modal);
+    var head=document.createElement('div');head.className='cdc-a5-modalhead';
+    head.innerHTML='<div><div class="cdc-a5-kicker">Recipe details</div><h3>'+esc(recipe.name||'Recipe')+'</h3></div>';
+    var back=document.createElement('button');back.type='button';back.className='btn ghost';back.textContent='Back';back.onclick=function(){openDish(recipeById(recipe.id)||recipe);};head.appendChild(back);modal.appendChild(head);
+    var yieldEl=inp('text',recipe.yield||recipe.portions||'');
+    var method=textarea(Array.isArray(recipe.method)?recipe.method.join('\n'):recipe.method||'');
+    modal.append(field('Yield / portions',yieldEl),field('Method',method));
+    var status=document.createElement('div');status.className='cdc-a5-status';modal.appendChild(status);
+    var actions=document.createElement('div');actions.className='cdc-a5-actions2';
+    var saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.className='btn primary';saveBtn.textContent='Save recipe details';
+    saveBtn.onclick=async function(){
+      saveBtn.disabled=true;status.textContent='Saving…';
+      try{
+        var r=recipeById(recipe.id)||recipe;snapshotVersion(r,'edit recipe details');
+        r.yield=yieldEl.value.trim()||r.yield||'1';
+        r.method=method.value.split(/\n+/).map(function(x){return x.trim();}).filter(Boolean);
+        r.needsReview=true;
+        if(typeof audit==='function')try{audit('recipe_updated',r.name+' · yield / method');}catch(e){}
+        await saveState('update recipe details');if(typeof rerender==='function')rerender();notify('Recipe updated');openDish(r);
+      }catch(err){status.className='cdc-a5-status bad';status.textContent='Not saved: '+(err&&err.message||err);saveBtn.disabled=false;}
+    };
+    actions.appendChild(saveBtn);modal.appendChild(actions);document.body.appendChild(overlay);
   }
 
-  var protectTimer=null;
-  function tryProtect(){
-    var table=findMatrix();
-    if(table){
-      try{protectTable(table);scheduleBulkIngredientDrafts();}
-      catch(err){console.warn('[Command de Cuisine] allergen matrix protection failed',err);}
+  function renderAllergens(v){
+    css();
+    v.innerHTML='';
+    var wrap=document.createElement('div');wrap.className='cdc-a5-wrap';
+    var head=document.createElement('div');head.className='cdc-a5-head';
+    var copy=document.createElement('div');copy.innerHTML='<h2>Allergen matrix</h2><div class="cdc-a5-copy">Read-only summary. Tap a dish name to see its recipe and ingredients. Allergens can only be changed inside an ingredient editor and require an explicit save.</div>';
+    var actions=document.createElement('div');actions.className='cdc-a5-actions';
+    if(typeof window.printAllergenMatrix==='function'){var p=document.createElement('button');p.type='button';p.className='btn ghost';p.textContent='Print matrix';p.onclick=window.printAllergenMatrix;actions.appendChild(p);}
+    if(typeof window.printDishAllergens==='function'){var d=document.createElement('button');d.type='button';d.className='btn ghost';d.textContent='Print dish sheets';d.onclick=window.printDishAllergens;actions.appendChild(d);}
+    head.append(copy,actions);wrap.appendChild(head);
+
+    var search=inp('search','');search.className='cdc-a5-search';search.placeholder='Search dishes…';wrap.appendChild(search);
+    var scroll=document.createElement('div');scroll.className='cdc-a5-scroll';
+    var table=document.createElement('table');table.className='cdc-a5-table';
+    table.innerHTML='<thead><tr><th>Dish</th>'+ALLERGENS.map(function(a){return '<th>'+esc(a)+'</th>';}).join('')+'</tr></thead><tbody></tbody>';
+    var body=table.querySelector('tbody');
+
+    function draw(){
+      body.innerHTML='';
+      var q=norm(search.value);
+      var rows=recipes().slice().sort(function(a,b){return s(a.name).localeCompare(s(b.name));}).filter(function(r){return !q||norm(r.name).indexOf(q)>=0;});
+      if(!rows.length){var tr=document.createElement('tr');tr.innerHTML='<td colspan="'+(ALLERGENS.length+1)+'" class="cdc-a5-empty">No dishes found.</td>';body.appendChild(tr);return;}
+      rows.forEach(function(r){
+        var present=new Set(recipeAllergens(r));
+        var tr=document.createElement('tr');
+        var td=document.createElement('td');
+        var b=document.createElement('button');b.type='button';b.className='cdc-a5-dish';b.textContent=r.name||'Untitled dish';b.onclick=function(){openDish(recipeById(r.id)||r);};td.appendChild(b);
+        if(r.allergenReviewRequired||r.needsReview){var badge=document.createElement('span');badge.className='cdc-a5-review';badge.textContent='Review';td.appendChild(badge);}
+        tr.appendChild(td);
+        ALLERGENS.forEach(function(a){var c=document.createElement('td');c.className='cdc-a5-mark';c.textContent=present.has(a)?'●':'';tr.appendChild(c);});
+        body.appendChild(tr);
+      });
     }
+    search.addEventListener('input',draw);draw();
+    scroll.appendChild(table);wrap.appendChild(scroll);v.appendChild(wrap);
   }
-  function scheduleProtect(){
-    clearTimeout(protectTimer);protectTimer=setTimeout(tryProtect,120);
+
+  function install(){
+    try{
+      if(typeof VIEWS==='undefined'||!VIEWS)return false;
+      VIEWS.allergens=renderAllergens;
+      VIEWS.allergens.__cdcSafeIngredientView=true;
+      css();
+      window.CDCRecipeWorkspace={open:function(id){var r=recipeById(id);if(r)openDish(r);},editIngredient:function(id,index){var r=recipeById(id);if(r)openIngredient(r,index);}};
+      console.info('[Command de Cuisine] safe ingredient allergen workspace active; matrix is read-only');
+      return true;
+    }catch(err){console.error('[Command de Cuisine] allergen workspace install failed',err);return false;}
   }
-  function start(){
-    css();scheduleProtect();
-    document.addEventListener('click',function(e){
-      var el=e.target&&e.target.closest?e.target.closest('button,a,[role="button"]'):null;
-      if(el&&/allergen/i.test(text(el)))setTimeout(tryProtect,180);
-    },true);
-    window.addEventListener('hashchange',scheduleProtect);
-    window.addEventListener('popstate',scheduleProtect);
-    window.CDCRecipeWorkspace={open:function(id){var r=recipeById(id);if(r)showInspector(r);},edit:function(id){var r=recipeById(id);if(r)openEditor(r);}};
-    console.info('[Command de Cuisine] ingredient allergen workspace active; stable matrix + sequential bulk ingredient drafts active');
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+
+  var tries=0,t=setInterval(function(){tries++;if(install()||tries>80)clearInterval(t);},100);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
