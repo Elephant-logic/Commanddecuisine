@@ -106,10 +106,15 @@
     else if(typeof value==='object') raw=Object.keys(value).filter(function(k){return value[k]===true||value[k]==='yes'||value[k]===1;});
     else raw=[String(value)];
     var joined=' '+raw.join(' , ').toLowerCase()+' ';
+    var words=' '+joined.replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()+' ';
+    function hasAlias(a){
+      var needle=' '+String(a).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()+' ';
+      return needle.trim()!=='' && words.indexOf(needle)>=0;
+    }
     var out=[];
     ALLERGENS.forEach(function(label){
       var key=norm(label), aliases=ALIASES[key]||[key];
-      if(aliases.some(function(a){return joined.indexOf(a)>=0;}))out.push(label);
+      if(aliases.some(hasAlias))out.push(label);
     });
     return out;
   }
