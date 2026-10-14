@@ -66,7 +66,7 @@
     return out;
   }
 
-  function openImporter(){
+  function openImporter(targetRecipeId){
     addStyle();
     document.getElementById(OVERLAY_ID)?.remove();
     const overlay=document.createElement('div'); overlay.id=OVERLAY_ID; overlay.className='cdc-ri-overlay';
@@ -107,6 +107,11 @@
       }catch(_){ }
     }
     target.onchange=loadExisting;
+    if(targetRecipeId){
+      const wanted=String(targetRecipeId);
+      const opt=[...target.options].find(o=>String(o.value)===wanted);
+      if(opt){target.value=wanted;loadExisting();}
+    }
 
     read.onclick=async()=>{
       const f=photo.files&&photo.files[0];
@@ -181,5 +186,8 @@
       wrapped.__cdcRecipeImportWrapped=true; VIEWS.recipes=wrapped; addStyle(); return true;
     }catch(e){return false;}
   }
+  window.CDCRecipeImporter={
+    open:function(recipeId){ openImporter(recipeId||''); }
+  };
   let tries=0;const timer=setInterval(()=>{tries++;if(install()||tries>40)clearInterval(timer);},100);
 })();
