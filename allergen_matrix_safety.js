@@ -358,30 +358,28 @@
     document.head.appendChild(style);
   }
 
-  function wrapView(){
-    try{
-      if(typeof VIEWS==='undefined'||!VIEWS||typeof VIEWS.allergens!=='function') return false;
-      if(VIEWS.allergens.__cdcSafeMatrixWrapped) return true;
-      var original=VIEWS.allergens;
-      var wrapped=function(){
-        var out=original.apply(this,arguments);
-        try{ setTimeout(protect,0); }catch(e){}
-        return out;
-      };
-      wrapped.__cdcSafeMatrixWrapped=true;
-      VIEWS.allergens=wrapped;
-      return true;
-    }catch(e){ return false; }
-  }
+  function wrapView(){ return false; }
 
   function start(){
     css();
-    wrapView();
-    protect();
-    var obs=new MutationObserver(function(){ protect(); wrapView(); });
+
+    // Do not wrap VIEWS.allergens. The Allergen tab owns its own render lifecycle,
+    // and wrapping it can destabilise the view on mobile. Protect the rendered
+    // matrix afterwards instead, and never let a protection error escape.
+    var timer=0;
+    function safeProtect(){
+      clearTimeout(timer);
+      timer=setTimeout(function(){
+        try{ protect(); }
+        catch(err){ console.warn('[Command de Cuisine] allergen matrix protection skipped',err); }
+      },80);
+    }
+
+    safeProtect();
+    var obs=new MutationObserver(function(){ safeProtect(); });
     obs.observe(document.documentElement,{childList:true,subtree:true});
-    setTimeout(protect,250);
-    console.info('[Command de Cuisine] Allergen matrix read-only; dish names open linked recipe/allergen details');
+    setTimeout(safeProtect,300);
+    console.info('[Command de Cuisine] Allergen matrix protected post-render; tab renderer left untouched');
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true});
