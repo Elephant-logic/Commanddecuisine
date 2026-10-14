@@ -58,12 +58,27 @@
     return ALLERGENS.filter(function(a){return set.has(a);});
   }
   function ingredientAllergens(ing){return uniqueAllergens(parseAllergens(ing&&ing.allergens));}
+  function ingredientIsConfirmed(ing){
+    if(!ing)return false;
+    var src=norm(ing.allergenSource);
+    return ing.allergenVerified===true || src==='manager-edit' || src==='user-confirmed';
+  }
+  function recipeAllergenState(recipe){
+    var confirmed=[],draft=[];
+    (recipe&&Array.isArray(recipe.ingredients)?recipe.ingredients:[]).forEach(function(ing){
+      var vals=ingredientAllergens(ing);
+      if(ingredientIsConfirmed(ing))confirmed=confirmed.concat(vals);
+      else draft=draft.concat(vals);
+      draft=draft.concat(ingredientSuggestions(ing));
+    });
+    draft=draft.concat(parseAllergens(recipe&&recipe.extraAllergens));
+    if(!confirmed.length&&!draft.length)draft=draft.concat(parseAllergens(recipe&&recipe.allergens));
+    confirmed=uniqueAllergens(confirmed);
+    draft=uniqueAllergens(draft).filter(function(a){return confirmed.indexOf(a)<0;});
+    return {confirmed:confirmed,draft:draft,all:uniqueAllergens(confirmed.concat(draft))};
+  }
   function recipeAllergens(recipe){
-    var all=[];
-    (recipe&&Array.isArray(recipe.ingredients)?recipe.ingredients:[]).forEach(function(ing){all=all.concat(ingredientAllergens(ing));});
-    all=all.concat(parseAllergens(recipe&&recipe.extraAllergens));
-    if(!all.length)all=all.concat(parseAllergens(recipe&&recipe.allergens));
-    return uniqueAllergens(all);
+    return recipeAllergenState(recipe).all;
   }
   function ingredientSuggestions(ing){return uniqueAllergens(parseAllergens(ing&&ing.allergenSuggestions));}
 
@@ -135,8 +150,8 @@
     if(document.getElementById('cdc-allergen-v5-css'))return;
     var st=document.createElement('style');st.id='cdc-allergen-v5-css';
     st.textContent=
-      '.cdc-a5-wrap{display:flex;flex-direction:column;gap:12px}.cdc-a5-head{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}.cdc-a5-head h2{margin:0}.cdc-a5-copy{color:var(--muted,#9ca6b3);font-size:13px;line-height:1.45;max-width:760px}.cdc-a5-actions{display:flex;gap:8px;flex-wrap:wrap}.cdc-a5-search{width:min(360px,100%);box-sizing:border-box;background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border:1px solid var(--line,#35404b);border-radius:10px;padding:10px}.cdc-a5-scroll{overflow:auto;-webkit-overflow-scrolling:touch;max-height:calc(100vh - 235px);border:1px solid var(--line,#35404b);border-radius:12px}.cdc-a5-table{border-collapse:separate;border-spacing:0;min-width:1120px;width:100%;background:var(--card,#1c2229)}.cdc-a5-table th,.cdc-a5-table td{border-right:1px solid var(--line,#35404b);border-bottom:1px solid var(--line,#35404b);padding:8px 6px;text-align:center;font-size:12px}.cdc-a5-table thead th{position:sticky;top:0;z-index:5;background:var(--panel,#1b2027);font-size:10px;line-height:1.2}.cdc-a5-table th:first-child,.cdc-a5-table td:first-child{position:sticky;left:0;z-index:4;background:var(--panel,#1b2027);min-width:220px;text-align:left}.cdc-a5-table thead th:first-child{z-index:7}.cdc-a5-dish{appearance:none;border:0;background:none;color:var(--brass,#e6ab31);padding:0;text-align:left;font:inherit;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer;width:100%}.cdc-a5-mark{font-size:17px;font-weight:900}.cdc-a5-review{display:block;margin-top:4px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn,#d99b2b)}.cdc-a5-empty{padding:22px;color:var(--muted,#9ca6b3)}'+
-      '.cdc-a5-overlay{position:fixed;inset:0;z-index:10100;background:rgba(0,0,0,.74);display:flex;align-items:flex-end;justify-content:center;padding:10px}.cdc-a5-modal{width:min(860px,100%);max-height:94vh;overflow:auto;background:var(--card,#1c2229);border:1px solid var(--line,#35404b);border-radius:18px 18px 12px 12px;padding:15px;box-shadow:0 20px 60px rgba(0,0,0,.55)}.cdc-a5-modalhead{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}.cdc-a5-modalhead>div{flex:1}.cdc-a5-modalhead h3{margin:2px 0 0}.cdc-a5-kicker{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#9ca6b3)}.cdc-a5-box{border:1px solid var(--line,#35404b);background:var(--panel2,#20262e);border-radius:11px;padding:11px;margin:9px 0}.cdc-a5-box strong{display:block;margin-bottom:4px}.cdc-a5-list{display:grid;gap:8px}.cdc-a5-ing{width:100%;text-align:left;border:1px solid var(--line,#35404b);background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border-radius:11px;padding:10px;font:inherit;cursor:pointer}.cdc-a5-ing-top{display:flex;gap:10px;justify-content:space-between}.cdc-a5-ing-name{font-weight:800}.cdc-a5-meta{font-size:12px;color:var(--muted,#9ca6b3);line-height:1.4;margin-top:4px}.cdc-a5-allergens{font-size:12px;margin-top:5px}.cdc-a5-suggest{font-size:11px;color:var(--warn,#d99b2b);margin-top:4px}.cdc-a5-actions2{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px}.cdc-a5-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}.cdc-a5-field span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-a5-field input,.cdc-a5-field select,.cdc-a5-field textarea{width:100%;box-sizing:border-box;background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border:1px solid var(--line,#35404b);border-radius:10px;padding:10px;font:inherit}.cdc-a5-field textarea{min-height:140px}.cdc-a5-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px}.cdc-a5-grid .full{grid-column:1/-1}.cdc-a5-picks{display:flex;flex-wrap:wrap;gap:6px}.cdc-a5-chip{border:1px solid var(--line,#35404b);border-radius:999px;padding:8px 10px;background:var(--panel2,#20262e);color:var(--muted,#9ca6b3);font:inherit;font-size:12px}.cdc-a5-chip.on{border-color:var(--brass,#e6ab31);background:rgba(230,171,49,.16);color:var(--text,#fff);font-weight:800}.cdc-a5-warning{border:1px solid var(--warn,#d99b2b);border-radius:10px;padding:9px;font-size:12px;line-height:1.4;margin:10px 0}.cdc-a5-status{min-height:18px;font-size:12px;color:var(--muted,#9ca6b3);margin-top:8px}.cdc-a5-status.bad{color:var(--danger,#e06666)}.cdc-a5-status.good{color:var(--ok,#48b875)}'+
+      '.cdc-a5-wrap{display:flex;flex-direction:column;gap:12px}.cdc-a5-head{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}.cdc-a5-head h2{margin:0}.cdc-a5-copy{color:var(--muted,#9ca6b3);font-size:13px;line-height:1.45;max-width:760px}.cdc-a5-actions{display:flex;gap:8px;flex-wrap:wrap}.cdc-a5-search{width:min(360px,100%);box-sizing:border-box;background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border:1px solid var(--line,#35404b);border-radius:10px;padding:10px}.cdc-a5-scroll{overflow:auto;-webkit-overflow-scrolling:touch;max-height:calc(100vh - 235px);border:1px solid var(--line,#35404b);border-radius:12px}.cdc-a5-table{border-collapse:separate;border-spacing:0;min-width:1120px;width:100%;background:var(--card,#1c2229)}.cdc-a5-table th,.cdc-a5-table td{border-right:1px solid var(--line,#35404b);border-bottom:1px solid var(--line,#35404b);padding:8px 6px;text-align:center;font-size:12px}.cdc-a5-table thead th{position:sticky;top:0;z-index:5;background:var(--panel,#1b2027);font-size:10px;line-height:1.2}.cdc-a5-table th:first-child,.cdc-a5-table td:first-child{position:sticky;left:0;z-index:4;background:var(--panel,#1b2027);min-width:220px;text-align:left}.cdc-a5-table thead th:first-child{z-index:7}.cdc-a5-dish{appearance:none;border:0;background:none;color:var(--brass,#e6ab31);padding:0;text-align:left;font:inherit;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer;width:100%}.cdc-a5-mark{font-size:17px;font-weight:900}.cdc-a5-mark.confirmed{color:var(--ok,#48b875)}.cdc-a5-mark.draft{color:var(--warn,#d99b2b)}.cdc-a5-review{display:block;margin-top:4px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn,#d99b2b)}.cdc-a5-empty{padding:22px;color:var(--muted,#9ca6b3)}'+
+      '.cdc-a5-overlay{position:fixed;inset:0;z-index:10100;background:rgba(0,0,0,.74);display:flex;align-items:flex-end;justify-content:center;padding:10px}.cdc-a5-modal{width:min(860px,100%);max-height:94vh;overflow:auto;background:var(--card,#1c2229);border:1px solid var(--line,#35404b);border-radius:18px 18px 12px 12px;padding:15px;box-shadow:0 20px 60px rgba(0,0,0,.55)}.cdc-a5-modalhead{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}.cdc-a5-modalhead>div{flex:1}.cdc-a5-modalhead h3{margin:2px 0 0}.cdc-a5-kicker{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#9ca6b3)}.cdc-a5-box{border:1px solid var(--line,#35404b);background:var(--panel2,#20262e);border-radius:11px;padding:11px;margin:9px 0}.cdc-a5-box strong{display:block;margin-bottom:4px}.cdc-a5-list{display:grid;gap:8px}.cdc-a5-ing{width:100%;text-align:left;border:1px solid var(--line,#35404b);background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border-radius:11px;padding:10px;font:inherit;cursor:pointer}.cdc-a5-ing-top{display:flex;gap:10px;justify-content:space-between}.cdc-a5-ing-name{font-weight:800}.cdc-a5-meta{font-size:12px;color:var(--muted,#9ca6b3);line-height:1.4;margin-top:4px}.cdc-a5-allergens{font-size:12px;margin-top:5px}.cdc-a5-confirmed{color:var(--ok,#48b875)}.cdc-a5-draft{color:var(--warn,#d99b2b)}.cdc-a5-suggest{font-size:11px;color:var(--warn,#d99b2b);margin-top:4px}.cdc-a5-actions2{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px}.cdc-a5-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}.cdc-a5-field span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-a5-field input,.cdc-a5-field select,.cdc-a5-field textarea{width:100%;box-sizing:border-box;background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border:1px solid var(--line,#35404b);border-radius:10px;padding:10px;font:inherit}.cdc-a5-field textarea{min-height:140px}.cdc-a5-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px}.cdc-a5-grid .full{grid-column:1/-1}.cdc-a5-picks{display:flex;flex-wrap:wrap;gap:6px}.cdc-a5-chip{border:1px solid var(--line,#35404b);border-radius:999px;padding:8px 10px;background:var(--panel2,#20262e);color:var(--muted,#9ca6b3);font:inherit;font-size:12px}.cdc-a5-chip.on{border-color:var(--brass,#e6ab31);background:rgba(230,171,49,.16);color:var(--text,#fff);font-weight:800}.cdc-a5-warning{border:1px solid var(--warn,#d99b2b);border-radius:10px;padding:9px;font-size:12px;line-height:1.4;margin:10px 0}.cdc-a5-status{min-height:18px;font-size:12px;color:var(--muted,#9ca6b3);margin-top:8px}.cdc-a5-status.bad{color:var(--danger,#e06666)}.cdc-a5-status.good{color:var(--ok,#48b875)}'+
       '@media(max-width:650px){.cdc-a5-scroll{max-height:calc(100vh - 250px)}.cdc-a5-table{min-width:1040px}.cdc-a5-table th:first-child,.cdc-a5-table td:first-child{min-width:175px}.cdc-a5-modal{padding:12px}.cdc-a5-grid{grid-template-columns:1fr 1fr}.cdc-a5-grid .cdc-a5-name,.cdc-a5-grid .full{grid-column:1/-1}}';
     document.head.appendChild(st);
   }
@@ -181,10 +196,12 @@
     head.innerHTML='<div><div class="cdc-a5-kicker">Recipe & allergen workspace</div><h3>'+esc(recipe.name||'Recipe')+'</h3></div>';
     var close=document.createElement('button');close.type='button';close.className='btn ghost';close.textContent='Close';close.onclick=closeOverlay;head.appendChild(close);modal.appendChild(head);
 
-    var current=recipeAllergens(recipe);
+    var allergenState=recipeAllergenState(recipe);
     var summary=document.createElement('div');summary.className='cdc-a5-box';
-    summary.innerHTML='<strong>Recipe allergen summary</strong><div>'+esc(current.length?current.join(', '):'None currently selected')+'</div>'+
-      (recipe.allergenReviewRequired?'<span class="cdc-a5-review">Needs allergen review</span>':'');
+    summary.innerHTML='<strong>Recipe allergen summary</strong>'+
+      '<div class="cdc-a5-confirmed"><b>Confirmed:</b> '+esc(allergenState.confirmed.length?allergenState.confirmed.join(', '):'None confirmed yet')+'</div>'+
+      (allergenState.draft.length?'<div class="cdc-a5-draft"><b>Draft / check:</b> '+esc(allergenState.draft.join(', '))+'</div>':'')+
+      (recipe.allergenReviewRequired||allergenState.draft.length?'<span class="cdc-a5-review">Needs allergen review</span>':'');
     modal.appendChild(summary);
 
     var note=document.createElement('div');note.className='cdc-a5-meta';
@@ -202,8 +219,8 @@
         var als=ingredientAllergens(ing),suggest=ingredientSuggestions(ing),st=ingredientStock(ing);
         b.innerHTML='<div class="cdc-a5-ing-top"><span class="cdc-a5-ing-name">'+esc(ing.name||'Ingredient')+'</span><span>'+esc([ing.qty,ing.unit].filter(function(v){return v!=null&&s(v)!=='';}).join(' '))+'</span></div>'+
           (ing.preparation?'<div class="cdc-a5-meta">'+esc(ing.preparation)+'</div>':'')+
-          '<div class="cdc-a5-allergens"><b>Allergens:</b> '+esc(als.length?als.join(', '):'None selected')+'</div>'+
-          (suggest.length?'<div class="cdc-a5-suggest">Draft suggestion: '+esc(suggest.join(', '))+' — check the actual product label/spec.</div>':'')+
+          '<div class="cdc-a5-allergens '+(ingredientIsConfirmed(ing)?'cdc-a5-confirmed':'cdc-a5-draft')+'"><b>'+(ingredientIsConfirmed(ing)?'Confirmed allergens:':'Draft allergens:')+'</b> '+esc(als.length?als.join(', '):'None selected')+'</div>'+
+          (suggest.length?'<div class="cdc-a5-suggest">Suggestion to check: '+esc(suggest.join(', '))+' — compare with the actual product label/spec.</div>':'')+
           '<div class="cdc-a5-meta">'+esc(st?'Stock link: '+stockName(st):'Not linked to Stock')+' · '+esc(purchasingLine(ing))+'</div>';
         b.onclick=function(){openIngredient(recipeById(recipe.id)||recipe,index);};
         list.appendChild(b);
@@ -247,7 +264,7 @@
     modal.appendChild(grid);
 
     var warn=document.createElement('div');warn.className='cdc-a5-warning';
-    warn.textContent='Choose allergens from the actual ingredient/packaging you use. The matrix itself cannot be tapped to change allergens.';
+    warn.textContent='Choose allergens from the actual ingredient/packaging you use. Saving this ingredient confirms your selection. The matrix itself is view-only.';
     modal.appendChild(warn);
 
     var pickerBox=picker(existing?ingredientAllergens(existing):[]);
@@ -284,7 +301,7 @@
         if(!u)throw new Error('Unit is required.');
         var r=recipeById(recipe.id)||recipe;snapshotVersion(r,'edit recipe ingredient');
         r.ingredients=Array.isArray(r.ingredients)?r.ingredients:[];
-        var next={name:nm,qty:q,unit:u,allergens:pickerBox.value(),allergenSource:'manager-edit',allergenReviewedAt:new Date().toISOString()};
+        var next={name:nm,qty:q,unit:u,allergens:pickerBox.value(),allergenSource:'manager-edit',allergenVerified:true,allergenReviewedAt:new Date().toISOString()};
         if(prep.value.trim())next.preparation=prep.value.trim();
         if(link.value)next.stockId=link.value;
         if(existing&&existing.allergenSuggestions)next.allergenSuggestions=existing.allergenSuggestions;
@@ -332,11 +349,13 @@
   }
 
   function renderAllergens(v){
-    css();
-    v.innerHTML='';
+    try{
+      css();
+      if(!v)throw new Error('Allergen view container missing');
+      v.innerHTML='';
     var wrap=document.createElement('div');wrap.className='cdc-a5-wrap';
     var head=document.createElement('div');head.className='cdc-a5-head';
-    var copy=document.createElement('div');copy.innerHTML='<h2>Allergen matrix</h2><div class="cdc-a5-copy">Read-only summary. Tap a dish name to see its recipe and ingredients. Allergens can only be changed inside an ingredient editor and require an explicit save.</div>';
+    var copy=document.createElement('div');copy.innerHTML='<h2>Allergen matrix</h2><div class="cdc-a5-copy">Read-only summary. Tap a dish name to see its recipe and ingredients. Allergens can only be changed inside an ingredient editor and require an explicit save.<br><b>● green</b> = confirmed on an ingredient · <b>◐ amber</b> = draft / needs checking.</div>';
     var actions=document.createElement('div');actions.className='cdc-a5-actions';
     if(typeof window.printAllergenMatrix==='function'){var p=document.createElement('button');p.type='button';p.className='btn ghost';p.textContent='Print matrix';p.onclick=window.printAllergenMatrix;actions.appendChild(p);}
     if(typeof window.printDishAllergens==='function'){var d=document.createElement('button');d.type='button';d.className='btn ghost';d.textContent='Print dish sheets';d.onclick=window.printDishAllergens;actions.appendChild(d);}
@@ -354,18 +373,35 @@
       var rows=recipes().slice().sort(function(a,b){return s(a.name).localeCompare(s(b.name));}).filter(function(r){return !q||norm(r.name).indexOf(q)>=0;});
       if(!rows.length){var tr=document.createElement('tr');tr.innerHTML='<td colspan="'+(ALLERGENS.length+1)+'" class="cdc-a5-empty">No dishes found.</td>';body.appendChild(tr);return;}
       rows.forEach(function(r){
-        var present=new Set(recipeAllergens(r));
-        var tr=document.createElement('tr');
-        var td=document.createElement('td');
-        var b=document.createElement('button');b.type='button';b.className='cdc-a5-dish';b.textContent=r.name||'Untitled dish';b.onclick=function(){openDish(recipeById(r.id)||r);};td.appendChild(b);
-        if(r.allergenReviewRequired||r.needsReview){var badge=document.createElement('span');badge.className='cdc-a5-review';badge.textContent='Review';td.appendChild(badge);}
-        tr.appendChild(td);
-        ALLERGENS.forEach(function(a){var c=document.createElement('td');c.className='cdc-a5-mark';c.textContent=present.has(a)?'●':'';tr.appendChild(c);});
-        body.appendChild(tr);
+        try{
+          var state=recipeAllergenState(r),confirmed=new Set(state.confirmed),draft=new Set(state.draft);
+          var tr=document.createElement('tr');
+          var td=document.createElement('td');
+          var b=document.createElement('button');b.type='button';b.className='cdc-a5-dish';b.textContent=r.name||'Untitled dish';b.onclick=function(){openDish(recipeById(r.id)||r);};td.appendChild(b);
+          if(r.allergenReviewRequired||r.needsReview||state.draft.length){var badge=document.createElement('span');badge.className='cdc-a5-review';badge.textContent='Review';td.appendChild(badge);}
+          tr.appendChild(td);
+          ALLERGENS.forEach(function(a){
+            var cell=document.createElement('td');cell.className='cdc-a5-mark';
+            if(confirmed.has(a)){cell.textContent='●';cell.classList.add('confirmed');cell.title='Confirmed on an ingredient';}
+            else if(draft.has(a)){cell.textContent='◐';cell.classList.add('draft');cell.title='Draft — check ingredient label/spec';}
+            tr.appendChild(cell);
+          });
+          body.appendChild(tr);
+        }catch(err){
+          console.error('[Command de Cuisine] allergen row failed',r&&r.id,err);
+          var tr=document.createElement('tr');tr.innerHTML='<td colspan="'+(ALLERGENS.length+1)+'" class="cdc-a5-empty">'+esc((r&&r.name)||'Recipe')+' — could not read allergen data. Tap Recipes to review this dish.</td>';body.appendChild(tr);
+        }
       });
     }
     search.addEventListener('input',draw);draw();
-    scroll.appendChild(table);wrap.appendChild(scroll);v.appendChild(wrap);
+      scroll.appendChild(table);wrap.appendChild(scroll);v.appendChild(wrap);
+    }catch(err){
+      console.error('[Command de Cuisine] allergen matrix render failed',err);
+      if(v){
+        v.innerHTML='<div class="card" style="padding:16px"><h2>Allergen matrix</h2><p class="muted">The allergen view hit a display error. Your recipe data has not been changed.</p><button type="button" class="btn primary" id="cdc-a5-retry">Retry</button></div>';
+        var retry=v.querySelector('#cdc-a5-retry');if(retry)retry.onclick=function(){renderAllergens(v);};
+      }
+    }
   }
 
   function install(){
@@ -381,5 +417,13 @@
   }
 
   var tries=0,t=setInterval(function(){tries++;if(install()||tries>80)clearInterval(t);},100);
+  setInterval(function(){
+    try{
+      if(typeof VIEWS!=='undefined'&&VIEWS&&VIEWS.allergens!==renderAllergens){
+        VIEWS.allergens=renderAllergens;
+        VIEWS.allergens.__cdcSafeIngredientView=true;
+      }
+    }catch(_e){}
+  },1000);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
