@@ -1307,3 +1307,52 @@ if 'main_app.js?v=20261013-pmdue2' not in _index.read_text(encoding='utf-8'):
     raise SystemExit('PM temperature main_app cache-bust missing')
 print(f'PM temperature round now appears due from 12:00 local time; updated {_pm_changed} live task rule(s)')
 
+
+
+# 2026-10-14 Safe allergen matrix.
+# The matrix is a reference view derived from recipe allergen data. Do not let
+# scrolling/tapping the matrix mutate recipe allergens directly.
+allergen_safe_src = Path('allergen_matrix_safety.js')
+if not allergen_safe_src.exists():
+    raise SystemExit('Missing allergen matrix safety runtime')
+allergen_safe_target = app / 'allergen_matrix_safety.js'
+allergen_safe_target.write_bytes(allergen_safe_src.read_bytes())
+
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+allergen_safe_route = "    '/allergen_matrix_safety.js',\n"
+if allergen_safe_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding allergen matrix safety')
+    srv = srv.replace(runtime_marker, runtime_marker + allergen_safe_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+if not runtime_loader.exists():
+    raise SystemExit('runtime_loader.js missing while adding allergen matrix safety')
+rt = runtime_loader.read_text(encoding='utf-8')
+m = re.search(r"(const\s+modules\s*=\s*\[)(.*?)(\n\s*\];)", rt, re.S)
+if not m:
+    raise SystemExit('runtime_loader.js modules array not found for allergen matrix safety')
+body = m.group(2)
+for quoted in ("'allergen_matrix_safety.js'", '"allergen_matrix_safety.js"'):
+    body = body.replace(",\n    " + quoted, "")
+    body = body.replace(quoted + ",\n", "")
+body = body.rstrip() + ",\n    'allergen_matrix_safety.js'"
+rt = rt[:m.start(2)] + body + rt[m.end(2):]
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261014-allergensafe1', rt)
+runtime_loader.write_text(rt, encoding='utf-8')
+
+for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
+    guard_path = app / guard_name
+    if guard_path.exists():
+        gt = guard_path.read_text(encoding='utf-8')
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261014-allergensafe1', gt)
+        guard_path.write_text(gt, encoding='utf-8')
+
+srv_check = server.read_text(encoding='utf-8')
+rt_check = runtime_loader.read_text(encoding='utf-8')
+if srv_check.count("'/allergen_matrix_safety.js'") + srv_check.count('"/allergen_matrix_safety.js"') != 1:
+    raise SystemExit('Allergen matrix safety route not installed exactly once')
+if rt_check.count("'allergen_matrix_safety.js'") + rt_check.count('"allergen_matrix_safety.js"') != 1:
+    raise SystemExit('Allergen matrix safety module not installed exactly once')
+print('Allergen matrix locked read-only with sticky mobile headers; recipe data remains the source of truth')
