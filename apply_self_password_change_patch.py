@@ -1339,14 +1339,14 @@ for quoted in ("'allergen_matrix_safety.js'", '"allergen_matrix_safety.js"'):
     body = body.replace(quoted + ",\n", "")
 body = body.rstrip() + ",\n    'allergen_matrix_safety.js'"
 rt = rt[:m.start(2)] + body + rt[m.end(2):]
-rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261014-allergensafe1', rt)
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261014-allergenrecipe1', rt)
 runtime_loader.write_text(rt, encoding='utf-8')
 
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard_path = app / guard_name
     if guard_path.exists():
         gt = guard_path.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261014-allergensafe1', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261014-allergenrecipe1', gt)
         guard_path.write_text(gt, encoding='utf-8')
 
 srv_check = server.read_text(encoding='utf-8')
@@ -1355,4 +1355,4 @@ if srv_check.count("'/allergen_matrix_safety.js'") + srv_check.count('"/allergen
     raise SystemExit('Allergen matrix safety route not installed exactly once')
 if rt_check.count("'allergen_matrix_safety.js'") + rt_check.count('"allergen_matrix_safety.js"') != 1:
     raise SystemExit('Allergen matrix safety module not installed exactly once')
-print('Allergen matrix locked read-only with sticky mobile headers; recipe data remains the source of truth')
+print('Allergen matrix locked read-only with sticky headers; dish names open linked recipe details/edit flow')
