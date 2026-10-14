@@ -1356,7 +1356,7 @@ if srv_check.count("'/allergen_matrix_safety.js'") + srv_check.count('"/allergen
 if rt_check.count("'allergen_matrix_safety.js'") + rt_check.count('"allergen_matrix_safety.js"') != 1:
     raise SystemExit('Allergen matrix safety module not installed exactly once')
 allergen_js_check = allergen_safe_target.read_text(encoding='utf-8')
-if 'stable allergen workspace v6 active' not in allergen_js_check or 'Save ingredient' not in allergen_js_check or 'Read-only summary' not in allergen_js_check:
+if 'stable allergen workspace v6 active' not in allergen_js_check or 'Save ingredient' not in allergen_js_check or 'View-only matrix.' not in allergen_js_check:
     raise SystemExit('Safe ingredient allergen workspace markers missing from final runtime')
 print('Allergen matrix replaced with stable read-only view; dish ingredients edit allergens explicitly and update the recipe summary')
 
