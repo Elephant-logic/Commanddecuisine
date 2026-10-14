@@ -296,6 +296,102 @@
     throw new Error('Could not read the ingredient draft.');
   }
 
+  var bulkRun=false;
+  var bulkTimer=null;
+  var BULK_LOCK_KEY='cdc_bulk_ingredient_drafts_lock_v1';
+
+  function managerCanEdit(){
+    try{if(typeof isMgr==='function')return !!isMgr();}catch(e){}
+    try{return !!(window.ME&&String(ME.role||'').toLowerCase()==='manager');}catch(e){}
+    return true;
+  }
+  function missingIngredientRecipes(){
+    return recipes().filter(function(r){return r&&(!Array.isArray(r.ingredients)||r.ingredients.length===0);});
+  }
+  function bulkProgress(){
+    var box=document.getElementById('cdc-bulk-ingredient-progress');
+    if(box)return box;
+    box=document.createElement('div');box.id='cdc-bulk-ingredient-progress';box.className='cdc-bulk-ingredient-progress';
+    box.innerHTML='<strong>Completing recipe ingredients</strong><span>Preparing…</span><button type="button" class="btn ghost">Hide</button>';
+    box.querySelector('button').onclick=function(){box.style.display='none';};
+    document.body.appendChild(box);return box;
+  }
+  function setBulkProgress(title,detail,bad){
+    var box=bulkProgress();box.style.display='';
+    var strong=box.querySelector('strong'),span=box.querySelector('span');
+    if(strong)strong.textContent=title;if(span)span.textContent=detail||'';
+    box.classList.toggle('bad',!!bad);
+  }
+  function readBulkLock(){try{var n=Number(localStorage.getItem(BULK_LOCK_KEY)||0);return Number.isFinite(n)?n:0;}catch(e){return 0;}}
+  function writeBulkLock(value){try{if(value)localStorage.setItem(BULK_LOCK_KEY,String(value));else localStorage.removeItem(BULK_LOCK_KEY);}catch(e){}}
+  function cleanDraftIngredients(items){
+    var out=[];
+    (Array.isArray(items)?items:[]).forEach(function(raw){
+      if(!raw||typeof raw!=='object')return;
+      var nm=s(raw.name).trim();if(!nm)return;
+      var q=Number(raw.qty),u=s(raw.unit).trim();
+      if(!Number.isFinite(q)||q<=0||!u)return;
+      var ing={name:nm,qty:q,unit:u,allergens:[]};
+      var prep=s(raw.preparation||raw.note).trim();if(prep)ing.preparation=prep;
+      out.push(ing);
+    });
+    return out;
+  }
+  async function generateIngredientDraft(recipe){
+    if(typeof api!=='function')throw new Error('AI service is unavailable.');
+    var prompt='Create a practical commercial-kitchen INGREDIENT DRAFT for this existing recipe. Return JSON only: {"ingredients":[{"name":"","qty":0,"unit":"g","preparation":""}],"method":[""]}. Use the stated yield and the existing method/description. Include every meaningful component that would need ordering or prep. Use practical units such as g, kg, ml, L, each, pack, tin, bottle or bunch. Do NOT return allergens. Do NOT claim quantities are verified supplier facts. Recipe: '+JSON.stringify({name:recipe.name,description:recipe.description||'',yield:recipe.yield||recipe.portions||'',method:recipe.method||''});
+    var res=await api('/api/openai/responses',{method:'POST',body:JSON.stringify({model:'gpt-4o-mini',input:[{role:'user',content:[{type:'input_text',text:prompt}]}]})});
+    var data=parseJsonLoose(outputText(res));
+    var items=cleanDraftIngredients(data.ingredients);
+    if(!items.length)throw new Error('No usable ingredients came back.');
+    return {ingredients:items,method:Array.isArray(data.method)?data.method.map(function(x){return s(x).trim();}).filter(Boolean):[]};
+  }
+  async function runBulkIngredientDrafts(){
+    if(bulkRun||!managerCanEdit())return;
+    var pending=missingIngredientRecipes();if(!pending.length)return;
+    var lock=readBulkLock(),now=Date.now();if(lock&&now-lock<15*60*1000)return;
+    bulkRun=true;writeBulkLock(now);
+    var total=pending.length,done=0,failed=[];
+    setBulkProgress('Completing recipe ingredients','0 / '+total+' completed');
+    try{
+      for(var i=0;i<pending.length;i++){
+        var recipe=recipeById(pending[i].id)||pending[i];
+        if(Array.isArray(recipe.ingredients)&&recipe.ingredients.length){done++;continue;}
+        setBulkProgress('Completing recipe ingredients',(i+1)+' / '+total+' · '+s(recipe.name).slice(0,70));
+        var snapshot=JSON.parse(JSON.stringify(recipe));
+        try{
+          var draft=await generateIngredientDraft(recipe);
+          recipe.ingredients=draft.ingredients;
+          if(draft.method.length)recipe.method=draft.method;
+          recipe.needsReview=true;
+          recipe.allergenVerified=false;
+          recipe.allergenSyncStatus='Needs review after ingredient draft';
+          recipe.ingredientDraftGenerated=true;
+          recipe.ingredientDraftGeneratedAt=new Date().toISOString();
+          if(typeof audit==='function')audit('recipe_ingredients_drafted',recipe.name+' · '+recipe.ingredients.length+' ingredients');
+          await saveState('bulk ingredient draft · '+recipe.name);
+          done++;
+          setBulkProgress('Completing recipe ingredients',done+' / '+total+' saved');
+        }catch(err){
+          Object.keys(recipe).forEach(function(k){delete recipe[k];});Object.assign(recipe,snapshot);
+          failed.push(recipe.name);
+          console.warn('[Command de Cuisine] ingredient draft failed for',recipe.name,err);
+        }
+        await new Promise(function(resolve){setTimeout(resolve,250);});
+      }
+      if(typeof rerender==='function')try{rerender();}catch(e){}
+      if(failed.length)setBulkProgress('Ingredient drafts mostly complete',done+' saved · '+failed.length+' need retry',true);
+      else{
+        setBulkProgress('Ingredient drafts complete',done+' recipes filled. Check actual products/allergens before approval.');
+        setTimeout(function(){var x=document.getElementById('cdc-bulk-ingredient-progress');if(x)x.style.display='none';},5000);
+      }
+    }finally{bulkRun=false;writeBulkLock(0);}
+  }
+  function scheduleBulkIngredientDrafts(){
+    clearTimeout(bulkTimer);
+    bulkTimer=setTimeout(function(){if(missingIngredientRecipes().length)runBulkIngredientDrafts();},700);
+  }
+
   function openEditor(recipe){
     if(!recipe)return;
     closeWorkspace();
@@ -452,6 +548,13 @@
     if(parent&&!parent.querySelector(':scope > .cdc-allergen-safe-note')){
       var note=document.createElement('div');note.className='cdc-allergen-safe-note';
       note.innerHTML='<strong>View-only allergen matrix</strong><span>Tap a dish name to open its recipe. Change allergens on the actual ingredients; saving the recipe updates this matrix.</span>';
+      var pending=missingIngredientRecipes().length;
+      if(pending){
+        var bulkBtn=document.createElement('button');bulkBtn.type='button';bulkBtn.className='btn ghost cdc-allergen-bulk-btn';
+        bulkBtn.textContent='Complete '+pending+' missing ingredient draft'+(pending===1?'':'s');
+        bulkBtn.onclick=function(e){e.preventDefault();e.stopPropagation();writeBulkLock(0);runBulkIngredientDrafts();};
+        note.appendChild(bulkBtn);
+      }
       parent.insertBefore(note,table);
     }
     return true;
@@ -460,7 +563,7 @@
   function css(){
     if(document.getElementById('cdc-rw-style'))return;
     var st=document.createElement('style');st.id='cdc-rw-style';st.textContent=
-      '.cdc-allergen-safe-note{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;padding:11px 12px;border:1px solid var(--line,#35404b);border-radius:11px;background:var(--panel2,#20262e);position:sticky;left:0;z-index:9}.cdc-allergen-safe-note span{font-size:12px;color:var(--muted,#9ca6b3)}'+
+      '.cdc-allergen-safe-note{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;padding:11px 12px;border:1px solid var(--line,#35404b);border-radius:11px;background:var(--panel2,#20262e);position:sticky;left:0;z-index:9}.cdc-allergen-safe-note span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-allergen-bulk-btn{align-self:flex-start;margin-top:4px}.cdc-bulk-ingredient-progress{position:fixed;left:12px;right:12px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:10120;max-width:720px;margin:auto;padding:12px;border:1px solid var(--brass,#e6ab31);border-radius:12px;background:var(--card,#1c2229);box-shadow:0 12px 34px rgba(0,0,0,.4);display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center}.cdc-bulk-ingredient-progress strong{grid-column:1}.cdc-bulk-ingredient-progress span{grid-column:1;color:var(--muted,#9ca6b3);font-size:12px}.cdc-bulk-ingredient-progress button{grid-column:2;grid-row:1/3}.cdc-bulk-ingredient-progress.bad{border-color:var(--warn,#d99b2b)}'+
       '.cdc-allergen-scroll{overflow:auto!important;-webkit-overflow-scrolling:touch}.cdc-allergen-safe-table{min-width:1000px;border-collapse:separate!important;border-spacing:0!important}.cdc-allergen-safe-table thead th{position:sticky!important;top:0!important;z-index:6!important;background:var(--panel,#1b2027)!important}.cdc-allergen-safe-table th:first-child,.cdc-allergen-safe-table td:first-child{position:sticky!important;left:0!important;z-index:5!important;background:var(--panel,#1b2027)!important;min-width:145px!important}.cdc-allergen-safe-table thead th:first-child{z-index:8!important}.cdc-allergen-safe-table th:not(:first-child),.cdc-allergen-safe-table td:not(:first-child){min-width:68px;text-align:center}.cdc-allergen-dish-cell{cursor:pointer!important;color:var(--brass,#e6ab31)!important;font-weight:800!important;text-decoration:underline;text-underline-offset:3px}'+
       '.cdc-rw-overlay{position:fixed;inset:0;z-index:10080;background:rgba(0,0,0,.74);display:flex;align-items:flex-end;justify-content:center;padding:10px}.cdc-rw-modal{width:min(900px,100%);max-height:94vh;overflow:auto;background:var(--card,#1c2229);border:1px solid var(--line,#35404b);border-radius:18px 18px 12px 12px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.55)}.cdc-rw-head{display:flex;gap:10px;align-items:flex-start;margin-bottom:12px}.cdc-rw-head>div{flex:1}.cdc-rw-head h3{margin:2px 0 0}.cdc-rw-kicker{text-transform:uppercase;letter-spacing:.08em;font-size:11px;color:var(--muted,#9ca6b3)}.cdc-rw-box{padding:11px;border:1px solid var(--line,#35404b);border-radius:11px;background:var(--panel2,#20262e);margin-bottom:12px}.cdc-rw-box>div{margin-top:4px}.cdc-rw-section{font-weight:800;margin:14px 0 8px}.cdc-rw-meta{font-size:12px;color:var(--muted,#9ca6b3);line-height:1.4}.cdc-rw-list{display:grid;gap:9px}.cdc-rw-ing{padding:10px;border:1px solid var(--line,#35404b);border-radius:10px}.cdc-rw-ing-head{display:flex;gap:10px;justify-content:space-between}.cdc-rw-allergen-line{font-size:12px;margin-top:6px}.cdc-rw-purchase{font-size:12px;margin-top:6px}.cdc-rw-purchase.short{color:var(--warn,#d99b2b)}.cdc-rw-purchase.ok{color:var(--ok,#48b875)}.cdc-rw-empty{display:flex;flex-direction:column;gap:5px;padding:16px;border:1px dashed var(--line,#35404b);border-radius:11px}.cdc-rw-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}.cdc-rw-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}.cdc-rw-field>span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-rw-field input,.cdc-rw-field select,.cdc-rw-field textarea{width:100%;box-sizing:border-box;background:var(--panel2,#20262e);color:var(--text,#f4f5f7);border:1px solid var(--line,#35404b);border-radius:9px;padding:10px;font:inherit}.cdc-rw-field textarea{min-height:120px}.cdc-rw-edit-list{display:grid;gap:12px}.cdc-rw-edit-ing{display:grid;grid-template-columns:2fr .8fr .8fr 1.4fr 2fr auto;gap:8px;align-items:end;padding:12px;border:1px solid var(--line,#35404b);border-radius:12px}.cdc-rw-edit-ing .cdc-rw-field{margin:0}.cdc-rw-row-note,.cdc-rw-allergen-head,.cdc-rw-allergen-picker,.cdc-rw-use-spec{grid-column:1/-1}.cdc-rw-allergen-head{display:flex;flex-direction:column;gap:2px}.cdc-rw-allergen-head span{font-size:12px;color:var(--muted,#9ca6b3)}.cdc-rw-allergen-picker{display:flex;flex-wrap:wrap;gap:6px}.cdc-rw-allergen-chip{border:1px solid var(--line,#35404b);border-radius:999px;padding:7px 10px;background:var(--panel2,#20262e);color:var(--muted,#9ca6b3);font:inherit;font-size:12px}.cdc-rw-allergen-chip.on{background:rgba(230,171,49,.16);border-color:var(--brass,#e6ab31);color:var(--text,#fff);font-weight:800}.cdc-rw-warning{padding:10px;border:1px solid var(--warn,#d99b2b);border-radius:10px;font-size:12px;line-height:1.4;margin:12px 0}.cdc-rw-tools{display:flex;gap:8px;margin-top:10px}.cdc-rw-status{min-height:20px;font-size:12px;color:var(--muted,#9ca6b3);margin-top:8px}.cdc-rw-status.bad{color:var(--danger,#e06666)}.cdc-rw-status.good{color:var(--ok,#48b875)}'+
       '@media(max-width:720px){.cdc-rw-edit-ing{grid-template-columns:1fr 1fr}.cdc-rw-edit-ing .cdc-rw-field:first-child,.cdc-rw-edit-ing .cdc-rw-field:nth-child(4),.cdc-rw-edit-ing .cdc-rw-field:nth-child(5),.cdc-rw-row-note,.cdc-rw-allergen-head,.cdc-rw-allergen-picker,.cdc-rw-use-spec{grid-column:1/-1}.cdc-rw-edit-ing>.btn{grid-column:1/-1}.cdc-rw-modal{padding:13px}.cdc-allergen-safe-table{min-width:960px}}';
@@ -470,7 +573,10 @@
   var protectTimer=null;
   function tryProtect(){
     var table=findMatrix();
-    if(table)try{protectTable(table);}catch(err){console.warn('[Command de Cuisine] allergen matrix protection failed',err);}
+    if(table){
+      try{protectTable(table);scheduleBulkIngredientDrafts();}
+      catch(err){console.warn('[Command de Cuisine] allergen matrix protection failed',err);}
+    }
   }
   function scheduleProtect(){
     clearTimeout(protectTimer);protectTimer=setTimeout(tryProtect,120);
@@ -484,7 +590,7 @@
     window.addEventListener('hashchange',scheduleProtect);
     window.addEventListener('popstate',scheduleProtect);
     window.CDCRecipeWorkspace={open:function(id){var r=recipeById(id);if(r)showInspector(r);},edit:function(id){var r=recipeById(id);if(r)openEditor(r);}};
-    console.info('[Command de Cuisine] Stable read-only allergen matrix + ingredient allergen workspace active');
+    console.info('[Command de Cuisine] Stable allergen matrix + ingredient workspace + sequential bulk ingredient drafts active');
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
