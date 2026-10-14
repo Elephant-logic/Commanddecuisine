@@ -590,7 +590,7 @@
     window.addEventListener('hashchange',scheduleProtect);
     window.addEventListener('popstate',scheduleProtect);
     window.CDCRecipeWorkspace={open:function(id){var r=recipeById(id);if(r)showInspector(r);},edit:function(id){var r=recipeById(id);if(r)openEditor(r);}};
-    console.info('[Command de Cuisine] Stable allergen matrix + ingredient workspace + sequential bulk ingredient drafts active');
+    console.info('[Command de Cuisine] ingredient allergen workspace active; stable matrix + sequential bulk ingredient drafts active');
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
