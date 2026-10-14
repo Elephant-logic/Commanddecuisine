@@ -1307,3 +1307,42 @@ if 'main_app.js?v=20261013-pmdue2' not in _index.read_text(encoding='utf-8'):
     raise SystemExit('PM temperature main_app cache-bust missing')
 print(f'PM temperature round now appears due from 12:00 local time; updated {_pm_changed} live task rule(s)')
 
+
+
+# 2026-10-14 Allergen matrix mobile safety guard.
+# The matrix is a display of recipe allergen data, not a casual editing surface.
+# Keep edits in the recipe workflow and make the matrix safe to scroll on phones.
+allergen_guard_src = Path('allergen_matrix_mobile_guard.js')
+if not allergen_guard_src.exists():
+    raise SystemExit('Missing allergen matrix mobile guard runtime')
+allergen_guard_target = app / 'allergen_matrix_mobile_guard.js'
+allergen_guard_target.write_bytes(allergen_guard_src.read_bytes())
+
+srv = server.read_text(encoding='utf-8')
+runtime_marker = "RUNTIME_FILES = (\n"
+allergen_guard_route = "    '/allergen_matrix_mobile_guard.js',\n"
+if allergen_guard_route not in srv:
+    if runtime_marker not in srv:
+        raise SystemExit('RUNTIME_FILES marker missing while adding allergen matrix mobile guard')
+    srv = srv.replace(runtime_marker, runtime_marker + allergen_guard_route, 1)
+server.write_text(srv, encoding='utf-8')
+
+index = app / 'index.html'
+html = index.read_text(encoding='utf-8')
+html = re.sub(r'\s*<script[^>]+src=["\']/?allergen_matrix_mobile_guard\.js(?:\?[^"\']*)?["\'][^>]*></script>\s*', '\n', html, flags=re.I)
+allergen_guard_tag = '<script src="/allergen_matrix_mobile_guard.js?v=20261014-safe1"></script>'
+if '</body>' not in html:
+    raise SystemExit('Could not locate </body> while installing allergen matrix mobile guard')
+html = html.replace('</body>', allergen_guard_tag + '\n</body>', 1)
+index.write_text(html, encoding='utf-8')
+
+srv_check = server.read_text(encoding='utf-8')
+html_check = index.read_text(encoding='utf-8')
+guard_check = allergen_guard_target.read_text(encoding='utf-8')
+if srv_check.count("'/allergen_matrix_mobile_guard.js'") + srv_check.count('"/allergen_matrix_mobile_guard.js"') != 1:
+    raise SystemExit('Allergen matrix mobile guard route not installed exactly once')
+if html_check.count(allergen_guard_tag) != 1:
+    raise SystemExit('Allergen matrix mobile guard script tag not installed exactly once')
+if 'View-only allergen matrix' not in guard_check or 'cdc-allergen-guarded' not in guard_check:
+    raise SystemExit('Allergen matrix mobile guard content check failed')
+print('Allergen matrix is now view-only with sticky headers and pinned dish names on mobile')
