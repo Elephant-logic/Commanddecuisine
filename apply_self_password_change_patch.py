@@ -1339,14 +1339,14 @@ for quoted in ("'allergen_matrix_safety.js'", '"allergen_matrix_safety.js"'):
     body = body.replace(quoted + ",\n", "")
 body = body.rstrip() + ",\n    'allergen_matrix_safety.js'"
 rt = rt[:m.start(2)] + body + rt[m.end(2):]
-rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261014-ingredientallergens1', rt)
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261014-bulkingredients1', rt)
 runtime_loader.write_text(rt, encoding='utf-8')
 
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard_path = app / guard_name
     if guard_path.exists():
         gt = guard_path.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261014-ingredientallergens1', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261014-bulkingredients1', gt)
         guard_path.write_text(gt, encoding='utf-8')
 
 srv_check = server.read_text(encoding='utf-8')
@@ -1356,6 +1356,6 @@ if srv_check.count("'/allergen_matrix_safety.js'") + srv_check.count('"/allergen
 if rt_check.count("'allergen_matrix_safety.js'") + rt_check.count('"allergen_matrix_safety.js"') != 1:
     raise SystemExit('Allergen matrix safety module not installed exactly once')
 allergen_js_check = allergen_safe_target.read_text(encoding='utf-8')
-if 'ingredient allergen workspace active' not in allergen_js_check or 'Save recipe & update matrix' not in allergen_js_check:
-    raise SystemExit('Ingredient allergen workspace markers missing from final runtime')
-print('Allergen matrix is stable/read-only; ingredient allergens roll up to recipes with optional stock links')
+if 'ingredient allergen workspace active' not in allergen_js_check or 'Save recipe & update matrix' not in allergen_js_check or 'runBulkIngredientDrafts' not in allergen_js_check:
+    raise SystemExit('Ingredient allergen workspace/bulk draft markers missing from final runtime')
+print('Allergen matrix is stable/read-only; ingredient allergens roll up to recipes and missing ingredient drafts build sequentially')
