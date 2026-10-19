@@ -94,7 +94,7 @@ function toast(){}
                 order.goto(order_path.as_uri(), wait_until="load")
                 assert order.locator("#selectedBody tr").count() == 2
                 assert order.locator("#selCount").inner_text() == "2 selected"
-                assert order.locator("#body").closest("section").is_hidden(), "Order-only file must hide catalogue"
+                assert order.locator("#body").locator("xpath=ancestor::section[1]").is_hidden(), "Order-only file must hide catalogue"
                 assert order.locator("#selectedBody tr").filter(has_text="Ricotta").get_by_role(
                     "textbox", name="quantity for Ricotta").input_value() == "3"
 
