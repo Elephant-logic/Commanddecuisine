@@ -15,7 +15,7 @@ marker='    if(tempTab==="probes")return tempProbes(v);'
 start=s.find(new)
 stop=s.find(marker,start)
 if start<0 or stop<0 or stop-start>1200:raise SystemExit("Cannot locate active Temperature tab switch")
-s=s[:stop]+'    if(tempTab==="repairs")return VIEWS.maintenance(v);'+chr(10)+'+s[stop:]
+s=s[:stop]+'    if(tempTab==="repairs")return VIEWS.maintenance(v);'+chr(10)+s[stop:]
 # Existing maintenance log allows any staff member to close a repair job.
 # Reporting a fault remains available, completion needs manager confirmation.
 old='row.append(el("button",{class:"btn sm ghost",html:m.status==="closed"?"Reopen":"Close"'
