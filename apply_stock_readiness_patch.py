@@ -38,8 +38,9 @@ once('STATE.stock.push({id:uid("s"),item:"New item",cat:"Other",unit:"each",par:
 once('const low=STATE.stock.filter(s=>+s.qty< +s.par).length;',
  'const low=STATE.stock.filter(s=>s.qtyKnown===true&&+s.par>0&&+s.qty< +s.par).length;',
  'Home stock warnings')
-anchor='VIEWS.stock=function(v){\n'
+anchor='VIEWS.stock=function(v){\n  const low=STATE.stock.filter(s=>s.qtyKnown===true && +s.par>0 && +s.qty< +s.par);\n'
 banner='''VIEWS.stock=function(v){
+  const low=STATE.stock.filter(s=>s.qtyKnown===true && +s.par>0 && +s.qty< +s.par);
   const total=STATE.stock.length,counted=STATE.stock.filter(x=>x.qtyKnown===true).length;
   const suppliers=STATE.stock.filter(x=>String(x.supplier||"").trim()).length;
   const note=el("div",{class:"card cdc-stock-readiness",style:"margin:0 0 14px;padding:13px;border-left:4px solid var(--brass,#e3a72c)"});
