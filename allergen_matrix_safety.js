@@ -1,8 +1,8 @@
-/* Command de Cuisine - stable mobile allergen matrix + ingredient workspace v6 */
+/* Command de Cuisine - stable mobile allergen matrix + recipe ingredient workspace v7 */
 (function(){
   'use strict';
-  if(window.__cdcAllergenWorkspaceV6) return;
-  window.__cdcAllergenWorkspaceV6=true;
+  if(window.__cdcAllergenWorkspaceV7) return;
+  window.__cdcAllergenWorkspaceV7=true;
 
   var OVERLAY='cdc-allergen-v6-overlay';
   var ALLERGENS=['Celery','Gluten','Crustaceans','Eggs','Fish','Lupin','Milk','Molluscs','Mustard','Nuts','Peanuts','Sesame','Soya','Sulphites'];
@@ -441,22 +441,25 @@
   function lockRoute(){
     try{
       if(typeof VIEWS==='undefined'||!VIEWS)return false;
-      ['allergens','allergen'].forEach(function(key){
+      ['allergens','allergen','allergenMatrix'].forEach(function(key){
         try{
           var d=Object.getOwnPropertyDescriptor(VIEWS,key);
-          if(!d||d.configurable){
+          if(d&&d.configurable){
             Object.defineProperty(VIEWS,key,{
-              configurable:true,enumerable:true,
-              get:function(){return renderAllergens;},
-              set:function(fn){if(fn===renderAllergens)return;}
+              configurable:true,enumerable:true,writable:true,value:renderAllergens
             });
           }else{
             VIEWS[key]=renderAllergens;
           }
-        }catch(e){try{VIEWS[key]=renderAllergens;}catch(_e){}}
+        }catch(e){
+          try{VIEWS[key]=renderAllergens;}catch(_e){}
+        }
       });
-      return true;
-    }catch(e){return false;}
+      return VIEWS.allergens===renderAllergens||VIEWS.allergen===renderAllergens||VIEWS.allergenMatrix===renderAllergens;
+    }catch(e){
+      console.error('[Command de Cuisine] allergen route repair failed',e);
+      return false;
+    }
   }
 
   function install(){
@@ -467,18 +470,35 @@
       editIngredient:function(id,index){var r=recipeById(id);if(r)openIngredient(r,index);},
       render:renderAllergens
     };
-    console.info('[Command de Cuisine] stable allergen workspace v6 active');
+    console.info('[Command de Cuisine] stable allergen workspace v7 active');
   }
 
+  var attempts=0;
+  var timer=setInterval(function(){
+    attempts++;
+    var ok=lockRoute();
+    if(ok&&attempts>10)clearInterval(timer);
+    if(attempts>100)clearInterval(timer);
+  },100);
+
+  // Reassert only when navigation opens Allergens; avoid permanent property
+  // accessors, which were fragile on some mobile browsers.
   document.addEventListener('click',function(e){
     try{
       var el=e.target&&e.target.closest?e.target.closest('button,a,[data-route],[data-view]'):null;
       if(!el)return;
       var key=norm((el.dataset&&(el.dataset.route||el.dataset.view))||el.textContent);
-      if(key.indexOf('allergen')>=0)lockRoute();
+      if(key.indexOf('allergen')>=0){
+        lockRoute();
+        setTimeout(function(){
+          try{
+            lockRoute();
+            if(typeof rerender==='function')rerender();
+          }catch(_e){}
+        },0);
+      }
     }catch(_e){}
   },true);
 
-  var attempts=0,timer=setInterval(function(){attempts++;if(lockRoute()||attempts>80)clearInterval(timer);},100);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
