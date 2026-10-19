@@ -99,7 +99,7 @@ def run_case(browser,base,mobile):
     card=page.locator("#view .grid.g-auto > .card").first
     assert page.locator("#view .grid.g-auto > .card").count()==2
     for label in ["Edit ingredients & allergens","Update from photo / notes","Edit dish details"]:
-        assert card.get_by_role("button",name=re.compile(label,re.I)).count()==1,label
+        assert card.get_by_role("button",name=label).count()==1,label
     before=page.evaluate("JSON.stringify(STATE.recipes)")
     assert page.locator("#view button",has_text="New recipe").count()==1
 
@@ -129,7 +129,7 @@ def run_case(browser,base,mobile):
 
     page.locator("#cdc-allergen-v6-overlay").get_by_role("button",name=re.compile("Close")).click()
     card=page.locator("#view .grid.g-auto > .card").first
-    card.get_by_role("button",name=re.compile("Update from photo / notes")).click()
+    card.get_by_role("button",name="Update from photo / notes").click()
     importer=page.locator("#cdc-recipe-import-overlay")
     assert importer.is_visible()
     assert importer.locator("select").first.input_value()=="r_fish", "Must target selected recipe by ID"
