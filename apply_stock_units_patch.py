@@ -102,6 +102,30 @@ text = text.replace('"Stock is fine — nothing below par."', '"Stock is fine �
 text = text.replace('Below par: ${low.join(", ")||"none"}.', 'Low stock: ${low.join(", ")||"none"}.')
 text = text.replace("tell you what's due or below par", "tell you what's due or low on stock")
 
+
+# Recipe-driven master stock catalogue. Auto-created items are catalogue entries
+# until a real count is entered; do not falsely present them as zero/out of stock.
+text = text.replace(
+    'const low=STATE.stock.filter(s=>+s.qty< +s.par);',
+    'const low=STATE.stock.filter(s=>s.qtyKnown!==false && +s.qty< +s.par);'
+)
+text = text.replace(
+    'function stockRow(s){   const short=+s.par-+s.qty, lowr=short>0, out=+s.qty<=0, step=stockUnitStep(s.unit);',
+    'function stockRow(s){   const known=s.qtyKnown!==false, short=known?(+s.par-+s.qty):0, lowr=known&&short>0, out=known&&+s.qty<=0, step=stockUnitStep(s.unit);'
+)
+text = text.replace(
+    '<div class="muted" style="font-size:11.5px;margin-top:2px"><b style="color:var(--ink)">Actual: \${esc(stockQtyText(s.qty,s.unit))}</b> · Minimum: \${esc(stockQtyText(s.par,s.unit))}\${s.supplier?" · "+esc(s.supplier):""}</div>',
+    '<div class="muted" style="font-size:11.5px;margin-top:2px"><b style="color:var(--ink)">Actual: \${s.qtyKnown===false?"Not counted":esc(stockQtyText(s.qty,s.unit))}</b> · Minimum: \${esc(stockQtyText(s.par,s.unit))}\${s.supplier?" · "+esc(s.supplier):""}</div>'
+)
+text = text.replace(
+    's.qty=Math.max(0,Math.round((+s.qty-step)*100)/100);',
+    's.qtyKnown=true;s.qty=Math.max(0,Math.round((+s.qty-step)*100)/100);'
+)
+text = text.replace(
+    's.qty=Math.round((+s.qty+step)*100)/100;',
+    's.qtyKnown=true;s.qty=Math.round((+s.qty+step)*100)/100;'
+)
+
 # Fail the build rather than silently shipping the old terminology/UI again.
 required = [
     'const STOCK_UNITS=[',
@@ -109,6 +133,8 @@ required = [
     'Actual amount in stock',
     'Low stock — amounts to order',
     'stockShortfallSummary(low)',
+    'qtyKnown!==false',
+    'Not counted',
 ]
 missing = [x for x in required if x not in text]
 forbidden = [
