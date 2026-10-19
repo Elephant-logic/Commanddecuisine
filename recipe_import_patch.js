@@ -66,6 +66,35 @@
     return out;
   }
 
+  function cleanName(name){return String(name||'').trim().toLowerCase().replace(/\s+/g,' ');}
+  function allergenList(value){
+    if(Array.isArray(value))return value.map(String).map(s=>s.trim()).filter(Boolean);
+    if(typeof value==='string')return value.split(/[,;]+/).map(s=>s.trim()).filter(Boolean);
+    return [];
+  }
+  function uniqueStrings(values){
+    const out=[],keys=new Set();
+    (values||[]).forEach(x=>{const v=String(x||'').trim(),k=v.toLowerCase();if(v&&!keys.has(k)){keys.add(k);out.push(v);}});
+    return out;
+  }
+  function mergeEditedIngredients(previous,lines){
+    const old=Array.isArray(previous)?previous:[];
+    const groups=new Map();
+    old.forEach(ing=>{
+      const key=cleanName(ing&&ing.name);
+      if(key){const items=groups.get(key)||[];items.push(ing);groups.set(key,items);}
+    });
+    // Only preserve supplier/allergen verification for an unambiguous unchanged
+    // product name. Different/new products MUST remain unverified drafts.
+    return lines.map(line=>{
+      const next=linkIngredient(line),candidates=groups.get(cleanName(line.name))||[];
+      if(candidates.length!==1)return Object.assign({},next,{allergenVerified:false,allergenSource:'recipe-import-draft'});
+      const original=candidates[0],merged=Object.assign({},original,next);
+      if(original.stockId)merged.stockId=original.stockId;
+      return merged;
+    });
+  }
+
   function openImporter(targetRecipeId){
     addStyle();
     document.getElementById(OVERLAY_ID)?.remove();
@@ -94,7 +123,7 @@
     const name=document.createElement('input'); field('Recipe name',name);
     const category=document.createElement('input'); category.placeholder='Starter, Main, Dessert…'; field('Category',category);
     const yieldEl=document.createElement('input'); yieldEl.placeholder='e.g. 10 portions'; field('Yield',yieldEl);
-    const allergens=document.createElement('input'); allergens.placeholder='e.g. gluten, milk, egg'; field('Allergens',allergens);
+    const allergens=document.createElement('input'); allergens.placeholder='e.g. gluten, milk, egg'; field('Allergen notes (draft — verify against supplier specs)',allergens);
     const ingredients=document.createElement('textarea'); ingredients.placeholder='One ingredient per line: Flour | 500 | g'; field('Ingredients — Name | Qty | Unit',ingredients,true);
     const method=document.createElement('textarea'); method.placeholder='Method / preparation steps'; field('Method',method,true);
 
@@ -147,12 +176,36 @@
         let r=target.value?(STATE.recipes||[]).find(x=>String(x.id)===String(target.value)):null;
         const isNew=!r;
         if(!r) r={id:(typeof uid==='function'?uid('r'):'r_'+Date.now()),name:nm,cat:'Mains',allergens:'',method:'',cost:0,price:0,yield:'1',ingredients:[]};
+        // Preserve the existing recipe ID, costing and history; only the
+        // explicitly edited fields change. Save a reversible local version.
+        const before=isNew?null:JSON.parse(JSON.stringify(r));
+        if(before){
+          delete before.versions;
+          r.versions=Array.isArray(r.versions)?r.versions:[];
+          r.versions.push({
+            id:'rv_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
+            data:before,reason:'update from recipe photo / notes',
+            savedAt:new Date().toISOString(),savedBy:'Recipe editor'
+          });
+          if(r.versions.length>20)r.versions=r.versions.slice(-20);
+        }
+        const previousIngredients=r.ingredients;
+        const formerDrafts=allergenList(r.allergenDrafts).concat(allergenList(r.allergens));
         r.name=nm;
         r.cat=category.value.trim()||r.cat||'Other';
         r.yield=yieldEl.value.trim()||r.yield||'1';
-        r.allergens=allergens.value.trim();
         r.method=method.value.trim();
-        r.ingredients=parseIngredientLines(ingredients.value).map(linkIngredient);
+        r.ingredients=mergeEditedIngredients(previousIngredients,parseIngredientLines(ingredients.value));
+        // AI text and recipe-level allergen notes NEVER mean confirmed allergens.
+        // Keep only previously verified ingredient-level marks as confirmed;
+        // all other claims stay in an explicitly reviewable draft field.
+        const confirmed=uniqueStrings(r.ingredients.flatMap(ing=>ing.allergenVerified===true?allergenList(ing.allergens):[]));
+        r.allergens=confirmed.join(', ');
+        r.allergenDrafts=uniqueStrings(formerDrafts.concat(allergenList(allergens.value)))
+          .filter(a=>!confirmed.some(c=>c.toLowerCase()===a.toLowerCase()));
+        r.allergenVerified=false;
+        r.allergenReviewRequired=true;
+        r.needsReview=true;
         if(isNew) STATE.recipes.push(r);
         if(typeof audit==='function')audit(isNew?'import_recipe':'update_recipe_from_source',r.name);
         if(typeof save==='function')save(isNew?'import recipe':'update recipe from photo/notes');
