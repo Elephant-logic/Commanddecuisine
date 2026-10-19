@@ -23,5 +23,23 @@ jobs:
           command=yaml.safe_load(open('render.yaml'))['services'][0]['buildCommand']
           subprocess.run(command,shell=True,check=True,executable='/bin/bash')
           PY
+      - name: Verify timer patch remains in assembled app
+        run: |
+          python -m py_compile apply_timer_controls_fix.py
+          node --check app/kitchen_tools_v2.js
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('app/kitchen_tools_v2.js').read_text()
+          assert "const before=timers.map(t=>t.id+':'+t.status).join('|')" in s
+          assert "rows.forEach(row=>" in s
+          assert "if(document.getElementById(PANEL))renderPanelBody()" not in s
+          print("PASS: patched, syntactically valid timer runtime")
+          PY
+      - name: Install Chromium for timer regression tests
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Test real timer buttons on desktop and mobile
+        run: python tests/test_timer_controls.py
       - name: Inspect production timer UI and event handlers
         run: python tests/diagnose_timers.py
