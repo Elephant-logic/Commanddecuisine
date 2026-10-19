@@ -127,7 +127,7 @@ def run_case(browser,base,mobile):
     assert r["ingredients"][0]["stockId"]=="s_milk"
     assert page.locator("#cdc-allergen-v6-overlay").is_visible()
 
-    page.locator("#cdc-allergen-v6-overlay").get_by_role("button",name=re.compile("Close")).click()
+    page.locator("#cdc-allergen-v6-overlay").get_by_role("button",name="Close").first.click()
     card=page.locator("#view .grid.g-auto > .card").first
     card.get_by_role("button",name="Update from photo / notes").click()
     importer=page.locator("#cdc-recipe-import-overlay")
