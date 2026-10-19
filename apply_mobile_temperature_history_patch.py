@@ -35,10 +35,16 @@ mobile='''  function tempHistory(v){
       return;
     }
 '''
-if s.count("  function tempHistory(v){")!=1:raise SystemExit("Cannot uniquely find temperature history function")
-start=s.index("  function tempHistory(v){")
-rows=s.find("const rows=STATE.tempReadings.slice()",start)
-if rows<0 or rows-start>300:raise SystemExit("Cannot find history row source")
+import re
+candidates=list(re.finditer(r'function\s+tempHistory\s*\(v\)\s*\{',s))
+if not candidates:raise SystemExit("Cannot locate temperature history function")
+start=rows=-1
+for m in reversed(candidates):
+    found=s.find("const rows=STATE.tempReadings.slice()",m.end())
+    if found>=0 and found-m.end()<300:
+        start,rows=m.start(),found
+        break
+if rows<0:raise SystemExit("Cannot locate authoritative temperature rows in history function")
 newline=s.find(chr(10),rows)
 if newline<0:raise SystemExit("Temperature row declaration has no line ending")
 needle="    if(typeof window"
