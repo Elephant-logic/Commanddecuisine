@@ -1,0 +1,26 @@
+name: Check Recipes screen layout
+on:
+  push:
+    branches: [fix/recipes-unified-editor-20261019]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Assemble current production release offline
+        run: |
+          python -m pip install pyyaml
+          python - <<'PY'
+          import yaml,subprocess
+          build=yaml.safe_load(open('render.yaml'))['services'][0]['buildCommand']
+          subprocess.run(build,shell=True,executable='/bin/bash',check=True)
+          PY
+      - name: Find the existing recipe views and controls
+        run: python tests/inspect_recipes_layout.py
