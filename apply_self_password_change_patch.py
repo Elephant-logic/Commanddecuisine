@@ -1414,3 +1414,41 @@ _final_recipe_import = (Path('recipe_import_patch.js')).read_text(encoding='utf-
 if 'window.CDCRecipeImporter' not in _final_recipe_import or 'openImporter(targetRecipeId)' not in _final_recipe_import:
     raise SystemExit('Recipe photo / notes importer is not exposed for existing recipes')
 print('Allergen workspace v7 forced last: read-only matrix, sticky labels, dish-to-ingredient editor and mobile-safe route repair')
+
+
+# 2026-10-19 Recipe ingredient -> master Stock catalogue guard.
+# The server must keep every recipe ingredient linked to a Stock catalogue item,
+# even before that item has ever been physically counted.
+auth_path = app / 'auth_controls.py'
+auth_final = auth_path.read_text(encoding='utf-8')
+if 'def _sync_recipe_stock_catalog(state):' not in auth_final or 'stock_catalog=_sync_recipe_stock_catalog(incoming)' not in auth_final:
+    source_auth = Path('auth_controls_override.py').read_text(encoding='utf-8')
+    hs = source_auth.find('_STOCK_COUNT_WORDS_RE =')
+    he = source_auth.find('def save_state(handler, payload):', hs)
+    if hs < 0 or he < 0:
+        raise SystemExit('Recipe Stock catalogue helper missing from auth_controls_override.py')
+    helper = source_auth[hs:he].rstrip() + '\n\n'
+    ss = auth_final.find('def save_state(handler, payload):')
+    if ss < 0:
+        raise SystemExit('save_state missing while restoring Recipe Stock catalogue helper')
+    if 'import hashlib' not in auth_final:
+        auth_final = auth_final.replace('import json\n', 'import json\nimport hashlib\n', 1)
+    if 'def _sync_recipe_stock_catalog(state):' not in auth_final:
+        auth_final = auth_final[:ss] + helper + auth_final[ss:]
+    old = "            backdated_inserted=_sync_backdated_temperature_candidates(conn,venue_id,incoming,user)\n"
+    if 'stock_catalog=_sync_recipe_stock_catalog(incoming)' not in auth_final:
+        if old not in auth_final:
+            raise SystemExit('Could not wire Recipe Stock catalogue into final save_state')
+        auth_final = auth_final.replace(old, old + "            stock_catalog=_sync_recipe_stock_catalog(incoming)\n", 1)
+    auth_path.write_text(auth_final, encoding='utf-8')
+
+auth_final = auth_path.read_text(encoding='utf-8')
+if 'def _sync_recipe_stock_catalog(state):' not in auth_final or 'stock_catalog=_sync_recipe_stock_catalog(incoming)' not in auth_final:
+    raise SystemExit('Recipe Stock catalogue did not survive final auth overlays')
+
+# Force phones to fetch the refreshed main application shell after the Stock UI change.
+index_path = app / 'index.html'
+index_text = index_path.read_text(encoding='utf-8')
+index_text = re.sub(r'main_app\.js(?:\?v=[^"\']*)?', 'main_app.js?v=20261019-recipestock1', index_text)
+index_path.write_text(index_text, encoding='utf-8')
+print('Recipe ingredients now maintain the master Stock catalogue; uncounted items stay marked Not counted')
