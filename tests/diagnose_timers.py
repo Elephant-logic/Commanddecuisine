@@ -45,3 +45,6 @@ for startlabel,endlabel in [
  a=v2.find(startlabel);b=v2.find(endlabel,a+1)
  print("FOCUS",startlabel,a,endlabel,b)
  if a>=0: print(v2[a:(b if b>a else a+10500)][:11000])
+
+print("\n========== V2 BOTTOM TICK AND INSTALL ==========")
+print(v2[v2.find("function durationFromText"):][-6000:])
