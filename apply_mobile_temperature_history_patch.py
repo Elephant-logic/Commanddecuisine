@@ -35,8 +35,17 @@ mobile='''  function tempHistory(v){
       return;
     }
 '''
-if s.count(anchor)!=1:raise SystemExit("Cannot uniquely locate temperature history renderer")
-p.write_text(s.replace(anchor,mobile,1),encoding="utf-8")
+if s.count("  function tempHistory(v){")!=1:raise SystemExit("Cannot uniquely find temperature history function")
+start=s.index("  function tempHistory(v){")
+rows=s.find("const rows=STATE.tempReadings.slice()",start)
+if rows<0 or rows-start>300:raise SystemExit("Cannot find history row source")
+newline=s.find("\\n",rows)
+if newline<0:raise SystemExit("Temperature row declaration has no line ending")
+needle="    if(typeof window"
+extra=mobile[mobile.index(needle):]
+if "cdc-mobile-temp-history" in s:raise SystemExit("Phone history already patched")
+s=s[:newline+1]+extra+s[newline+1:]
+p.write_text(s,encoding="utf-8")
 html=index.read_text(encoding="utf-8")
 old='main_app.js?v=20261020-kitchen-stock1'
 if html.count(old)!=1:raise SystemExit("Expected Stock patch cache marker missing")
