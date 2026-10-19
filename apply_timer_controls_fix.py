@@ -5,6 +5,7 @@ On touchscreen browsers that destroys focused inputs and button elements
 between pointerdown and click. Never modify persisted kitchen data/auth.
 """
 from pathlib import Path
+import re
 
 path=Path("app/kitchen_tools_v2.js")
 if not path.is_file():
@@ -48,4 +49,24 @@ text=text.replace(original,corrected,1)
 if original in text or text.count("const before=timers.map(t=>t.id+':'+t.status)")!=1:
     raise SystemExit("Timer tick patch failed verification")
 path.write_text(text,encoding="utf-8")
+
+# Ensure an existing kitchen device receives the newly built JS instead of a
+# cached copy. Use the same versioned runtime-loader pattern as prior overlays.
+version="20261019-timer-controls1"
+loader=Path("app/runtime_loader.js")
+if not loader.is_file():
+    raise SystemExit("Runtime loader missing while cache-busting timer fix")
+loader_text=loader.read_text(encoding="utf-8")
+updated_loader=re.sub(r"\?runtime=[^'\"\s]+", "?runtime="+version, loader_text)
+if updated_loader == loader_text:
+    raise SystemExit("No runtime query key found: refusing stale timer deployment")
+loader.write_text(updated_loader,encoding="utf-8")
+for guard_name in ("temperature_reset_guard.js","runtime_guard.js"):
+    guard=Path("app")/guard_name
+    if guard.is_file():
+        raw=guard.read_text(encoding="utf-8")
+        fresh=re.sub(r"runtime_loader\.js\?v=[^'\"\s]+","runtime_loader.js?v="+version,raw)
+        if fresh!=raw:
+            guard.write_text(fresh,encoding="utf-8")
+
 print("Kitchen Tools v2 timer controls fixed: 500ms tick updates countdown text without unmounting inputs/buttons")
