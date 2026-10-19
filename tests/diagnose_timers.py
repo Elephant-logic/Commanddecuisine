@@ -33,3 +33,15 @@ for filename in sorted(Path('app').rglob('*.js'))+[Path('app/index.html')]:
    else:spans.append((a,b))
   for a,b in spans[:8]:
    print(f'\n OFFSET {a}-{b}\n'+s[a:b][:12000])
+
+print("\n========== FOCUSED V2 TIMER SOURCE ==========")
+v2=Path("app/kitchen_tools_v2.js").read_text()
+for startlabel,endlabel in [
+ ("function panelHtml(){","function durationFromText"),
+ ("function bindPanel(){","function durationFromText"),
+ ("function addTimer(","function serviceData"),
+ ("function openSheet","function durationFromText")
+]:
+ a=v2.find(startlabel);b=v2.find(endlabel,a+1)
+ print("FOCUS",startlabel,a,endlabel,b)
+ if a>=0: print(v2[a:(b if b>a else a+10500)][:11000])
