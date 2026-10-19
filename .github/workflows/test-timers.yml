@@ -15,5 +15,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Build production release in isolated checkout
+        run: |
+          python -m pip install pyyaml
+          python - <<'PY'
+          import subprocess, yaml
+          command=yaml.safe_load(open('render.yaml'))['services'][0]['buildCommand']
+          subprocess.run(command,shell=True,check=True,executable='/bin/bash')
+          PY
       - name: Inspect production timer UI and event handlers
         run: python tests/diagnose_timers.py
