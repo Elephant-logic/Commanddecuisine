@@ -1,0 +1,28 @@
+name: Verify deployed ordering feature
+on:
+  push:
+    branches: [main]
+    paths:
+      - full_stock_html_export.js
+      - full_stock_order_template.html
+      - apply_full_stock_html_export_patch.py
+      - render.yaml
+      - tests/verify_live_order_export.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out release
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Confirm live Render site is serving ordering files
+        run: python tests/verify_live_order_export.py
