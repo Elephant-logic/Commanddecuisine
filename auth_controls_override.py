@@ -1,4 +1,5 @@
 import json
+import hashlib
 import re
 import contextvars
 from datetime import datetime
@@ -501,6 +502,241 @@ def _sync_backdated_temperature_candidates(conn, venue_id, incoming_state, user)
             if cur.fetchone():
                 inserted += 1
     return inserted
+
+
+_STOCK_COUNT_WORDS_RE = re.compile(
+    r'^(?:kg|g|ml|l|litre|litres|liter|liters|tbsp|tsp|slice|slices|sprig|sprigs|'
+    r'clove|cloves|piece|pieces|medium|small|large|bunch|bunches|cm)\b\s*',
+    re.I,
+)
+
+def _catalog_ingredient_name(value):
+    s=str(value or '').strip()
+    if not s:
+        return ''
+    s=re.sub(r'^\s*\d+(?:\.\d+)?\s*','',s)
+    # AI menu imports occasionally embedded the amount/unit into the name.
+    # Strip only leading count/measure words; keep the actual ingredient/spec.
+    for _ in range(4):
+        newer=_STOCK_COUNT_WORDS_RE.sub('',s,1).strip()
+        if newer == s:
+            break
+        s=newer
+    s=re.sub(
+        r'\s*,\s*(?:finely |freshly |roughly |thinly |thickly |well )?'
+        r'(?:chopped|sliced|diced|minced|grated|peeled|seeded|washed|split|toasted|'
+        r'soaked|cut|drained|rinsed|ground).*    stored,user=handler.require_user()
+    if not stored: return
+    incoming=payload.get('state')
+    if not isinstance(incoming,dict): handler.send_json({'error':'A valid state is required.'},400); return
+    incoming=json.loads(json.dumps(incoming)); expected=int(payload.get('revision') or 0); venue_id=user['tenantId']
+    with app.connect() as conn:
+        try:
+            current=_read_venue_state(venue_id,conn=conn,for_update=True)
+            if not current: conn.rollback(); handler.send_json({'error':'Venue is not initialised.'},409); return
+            conflict_merge=False
+            if expected != current['revision']:
+                merged=_merge_conflict_append_only(current['state'],incoming)
+                if merged is None:
+                    conn.rollback(); handler.send_json({'error':'Another user saved changes first. Latest shared data has been returned.','conflict':True,**_public_state(current)},409); return
+                incoming=merged; conflict_merge=True
+            backdated_inserted=_sync_backdated_temperature_candidates(conn,venue_id,incoming,user)
+            stock_catalog=_sync_recipe_stock_catalog(incoming)
+            incoming['tempReadings']=current['state'].get('tempReadings',[])
+            incoming['audit']=_merge_rolling_audit(current['state'],incoming)
+            incoming['users']=current['state'].get('users',[])
+            if user.get('role') != 'manager':
+                incoming['settings']=current['state'].get('settings',{})
+            else:
+                incoming.setdefault('settings',{})['venueId']=venue_id
+            raw=json.dumps(incoming,ensure_ascii=False,separators=(',',':'))
+            if len(raw.encode()) > app.MAX_STATE_BYTES: conn.rollback(); handler.send_json({'error':'State is too large.'},413); return
+            revision=current['revision']+1
+            with conn.cursor() as cur:
+                cur.execute('UPDATE venue_states SET state=%s::jsonb,revision=%s,updated_at=NOW(),updated_by=%s WHERE venue_id=%s',
+                            (raw,revision,user['username'],venue_id))
+                cur.execute('INSERT INTO server_audit(username,action,revision,details) VALUES(%s,%s,%s,%s::jsonb)',
+                            (user['username'],'save_state',revision,json.dumps({'venueId':venue_id,'reason':str(payload.get('reason','client save')),'conflict_append_merge':conflict_merge,'backdated_temperature_inserted':backdated_inserted,'recipe_stock_catalog':stock_catalog})))
+            conn.commit()
+        except Exception:
+            conn.rollback(); raise
+    try: drive_storage.maybe_daily_backup(incoming,revision)
+    except Exception as exc: print('Supabase Storage daily backup skipped:',exc)
+    handler.send_json({'ok':True,'revision':revision,'conflictAppendMerge':conflict_merge,'backdatedTemperatureInserted':backdated_inserted,'recipeStockCatalog':stock_catalog})
+, '', s, flags=re.I)
+    s=re.sub(r'\s*\((?:for|optional)[^)]*\)\s*    stored,user=handler.require_user()
+    if not stored: return
+    incoming=payload.get('state')
+    if not isinstance(incoming,dict): handler.send_json({'error':'A valid state is required.'},400); return
+    incoming=json.loads(json.dumps(incoming)); expected=int(payload.get('revision') or 0); venue_id=user['tenantId']
+    with app.connect() as conn:
+        try:
+            current=_read_venue_state(venue_id,conn=conn,for_update=True)
+            if not current: conn.rollback(); handler.send_json({'error':'Venue is not initialised.'},409); return
+            conflict_merge=False
+            if expected != current['revision']:
+                merged=_merge_conflict_append_only(current['state'],incoming)
+                if merged is None:
+                    conn.rollback(); handler.send_json({'error':'Another user saved changes first. Latest shared data has been returned.','conflict':True,**_public_state(current)},409); return
+                incoming=merged; conflict_merge=True
+            backdated_inserted=_sync_backdated_temperature_candidates(conn,venue_id,incoming,user)
+            incoming['tempReadings']=current['state'].get('tempReadings',[])
+            incoming['audit']=_merge_rolling_audit(current['state'],incoming)
+            incoming['users']=current['state'].get('users',[])
+            if user.get('role') != 'manager':
+                incoming['settings']=current['state'].get('settings',{})
+            else:
+                incoming.setdefault('settings',{})['venueId']=venue_id
+            raw=json.dumps(incoming,ensure_ascii=False,separators=(',',':'))
+            if len(raw.encode()) > app.MAX_STATE_BYTES: conn.rollback(); handler.send_json({'error':'State is too large.'},413); return
+            revision=current['revision']+1
+            with conn.cursor() as cur:
+                cur.execute('UPDATE venue_states SET state=%s::jsonb,revision=%s,updated_at=NOW(),updated_by=%s WHERE venue_id=%s',
+                            (raw,revision,user['username'],venue_id))
+                cur.execute('INSERT INTO server_audit(username,action,revision,details) VALUES(%s,%s,%s,%s::jsonb)',
+                            (user['username'],'save_state',revision,json.dumps({'venueId':venue_id,'reason':str(payload.get('reason','client save')),'conflict_append_merge':conflict_merge,'backdated_temperature_inserted':backdated_inserted})))
+            conn.commit()
+        except Exception:
+            conn.rollback(); raise
+    try: drive_storage.maybe_daily_backup(incoming,revision)
+    except Exception as exc: print('Supabase Storage daily backup skipped:',exc)
+    handler.send_json({'ok':True,'revision':revision,'conflictAppendMerge':conflict_merge,'backdatedTemperatureInserted':backdated_inserted})
+,'',s,flags=re.I).strip()
+    aliases={
+        'garlic cloves':'Garlic',
+        'onions':'Onion',
+        'lemon':'Lemons',
+        'lime':'Limes',
+    }
+    return aliases.get(s.lower(),s)
+
+def _catalog_key(value):
+    return re.sub(r'[^a-z0-9]+','',_catalog_ingredient_name(value).lower())
+
+def _catalog_unit(ingredient):
+    raw_name=str((ingredient or {}).get('name') or '')
+    unit=str((ingredient or {}).get('unit') or 'each').strip()
+    unit_map={
+        'ea':'each','piece':'each','pieces':'each','slice':'each','slices':'each',
+        'litre':'L','litres':'L','liter':'L','liters':'L','l':'L',
+    }
+    unit=unit_map.get(unit.lower(),unit)
+    if unit == 'each':
+        m=re.match(r'^\s*\d+(?:\.\d+)?\s*(kg|g|ml|l|litre|litres|liter|liters)\b',raw_name,re.I)
+        if m:
+            unit=unit_map.get(m.group(1).lower(),m.group(1))
+    allowed={'g','kg','oz','ml','L','each','pack','case','box','tin','bottle','tray','bag','bunch'}
+    return unit if unit in allowed else 'each'
+
+def _catalog_category(name):
+    n=str(name or '').lower()
+    if any(k in n for k in ('chicken','beef','steak','gammon','bacon','sausage','scampi','fish','prawn','lamb','pork')):
+        return 'Meat'
+    if any(k in n for k in ('milk','cream','cheese','yoghurt','yogurt','butter','egg','stilton','mozzarella','parmesan')):
+        return 'Dairy'
+    if any(k in n for k in ('bread','bun','baguette','naan','brioche','sourdough')):
+        return 'Bakery'
+    if 'frozen' in n:
+        return 'Frozen'
+    if any(k in n for k in (
+        'onion','garlic','pepper','tomato','potato','carrot','cabbage','broccoli','cucumber',
+        'lettuce','salad','avocado','lemon','lime','herb','parsley','coriander','cilantro',
+        'ginger','mushroom','peas','beans','pineapple','jalape'
+    )):
+        return 'Veg'
+    return 'Ambient'
+
+def _sync_recipe_stock_catalog(state):
+    if not isinstance(state,dict):
+        return {'added':0,'linked':0,'total':0}
+    recipes=state.get('recipes')
+    if not isinstance(recipes,list):
+        return {'added':0,'linked':0,'total':0}
+    stock=state.setdefault('stock',[])
+    if not isinstance(stock,list):
+        stock=[]
+        state['stock']=stock
+
+    by_key={}
+    ids={str(s.get('id') or '') for s in stock if isinstance(s,dict)}
+    for s in stock:
+        if not isinstance(s,dict):
+            continue
+        key=_catalog_key(s.get('item') or s.get('name'))
+        if key and key not in by_key:
+            by_key[key]=s
+
+    added=0
+    linked=0
+    now=datetime.now().astimezone().isoformat()
+    for recipe in recipes:
+        if not isinstance(recipe,dict):
+            continue
+        ingredients=recipe.get('ingredients')
+        if not isinstance(ingredients,list):
+            continue
+        unresolved=[]
+        for ing in ingredients:
+            if not isinstance(ing,dict):
+                continue
+            display=_catalog_ingredient_name(ing.get('name'))
+            key=_catalog_key(display)
+            if not key:
+                unresolved.append(str(ing.get('name') or 'Unnamed ingredient'))
+                continue
+            item=by_key.get(key)
+            if item is None:
+                base_id='s_ing_'+hashlib.sha1(key.encode('utf-8')).hexdigest()[:12]
+                item_id=base_id
+                suffix=2
+                while item_id in ids:
+                    item_id=f'{base_id}_{suffix}'
+                    suffix+=1
+                ids.add(item_id)
+                suggestions=[]
+                raw_allergens=ing.get('allergens')
+                if isinstance(raw_allergens,list):
+                    suggestions=[str(x).strip() for x in raw_allergens if str(x).strip()]
+                item={
+                    'id':item_id,
+                    'item':display,
+                    'cat':_catalog_category(display),
+                    'unit':_catalog_unit(ing),
+                    'par':0,
+                    'qty':0,
+                    'qtyKnown':False,
+                    'supplier':'',
+                    'createdFrom':'recipe-ingredient-catalog',
+                    'catalogueItem':True,
+                    'allergenSuggestions':sorted(set(suggestions)),
+                    'allergenVerified':False,
+                    'createdAt':now,
+                }
+                stock.append(item)
+                by_key[key]=item
+                added+=1
+            else:
+                # Keep useful draft allergen hints without pretending they are
+                # supplier-verified declarations.
+                if item.get('catalogueItem'):
+                    hints=set(str(x).strip() for x in (item.get('allergenSuggestions') or []) if str(x).strip())
+                    raw_allergens=ing.get('allergens')
+                    if isinstance(raw_allergens,list):
+                        hints.update(str(x).strip() for x in raw_allergens if str(x).strip())
+                    item['allergenSuggestions']=sorted(hints)
+            if str(ing.get('stockId') or '') != str(item.get('id')):
+                ing['stockId']=item.get('id')
+                linked+=1
+        recipe['stockLinkIssues']=unresolved
+        if not unresolved:
+            missing=recipe.get('allergenSyncMissing')
+            if isinstance(missing,list):
+                recipe['allergenSyncMissing']=[
+                    x for x in missing
+                    if 'not linked to stock' not in str(x).lower()
+                ]
+    stock.sort(key=lambda s: str((s or {}).get('item') or '').lower())
+    return {'added':added,'linked':linked,'total':len(stock)}
 
 def save_state(handler, payload):
     stored,user=handler.require_user()
