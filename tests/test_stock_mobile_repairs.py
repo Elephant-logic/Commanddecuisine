@@ -96,11 +96,15 @@ def snippets(source):
     def between(a,b):
         start=source.index(a);end=source.index(b,start)
         return source[start:end]
+    stock_row=source.index("function stockRow(s){")
+    stock_start=source.rfind("VIEWS.stock=function(v){",0,stock_row)
+    stock_end=source.find("function stockMovesView(){",stock_row)
+    assert stock_start>=0 and stock_end>stock_row,(stock_start,stock_row,stock_end)
     return {
-      "__STOCK_VIEW__":between("VIEWS.stock=function(v){","  function stockMovesView(){"),
-      "__TEMP_HISTORY__":between("  function tempHistory(v){","  function tempTrends(v){"),
-      "__TEMP_TABS__":between("VIEWS.temps=function(v){","  function tempRound(v){"),
-      "__MAINTENANCE__":between("VIEWS.maintenance=function(v){","  /* ---------- FRYER OIL",)
+      "__STOCK_VIEW__":source[stock_start:stock_end],
+      "__TEMP_HISTORY__":between("function tempHistory(v){","function tempTrends(v){"),
+      "__TEMP_TABS__":between("VIEWS.temps=function(v){","function tempRound(v){"),
+      "__MAINTENANCE__":between("VIEWS.maintenance=function(v){","/* ---------- FRYER OIL")
     }
 
 def run(browser,url,mobile):
