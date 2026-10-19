@@ -64,7 +64,39 @@ def upload_from_json(handler,payload):
     except Exception as exc:handler.send_json({'error':str(exc)},400)
 
 def _backup_payload(state,revision):
-    return json.dumps({'product':'Command de Cuisine','revision':revision,'exportedAt':datetime.now(timezone.utc).isoformat(),'state':state},ensure_ascii=False,indent=2).encode()
+    """Write a complete venue snapshot, including the authoritative temperature table.
+
+    venue_states.state.tempReadings is intentionally empty in the normalized
+    multi-tenant store. Reading only venue_states silently creates backups with
+    no temperature history; hydrate from tenant_temperature_readings instead.
+    """
+    venue_id=(state.get('settings') or {}).get('venueId') if isinstance(state,dict) else None
+    if not venue_id:raise RuntimeError('Cannot back up without a venue identifier')
+    cloned=json.loads(json.dumps(state))
+    with app.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''SELECT id,app_id,value,ts,period,recorded_by,source,payload
+                           FROM tenant_temperature_readings
+                           WHERE venue_id=%s ORDER BY ts ASC,id ASC''',(venue_id,))
+            readings=cur.fetchall()
+    hydrated=[]
+    for row in readings:
+        item=dict(row['payload']) if isinstance(row.get('payload'),dict) else {}
+        item.update({
+            'id':row['id'],'appId':row['app_id'],
+            'value':float(row['value']) if row['value'] is not None else None,
+            'ts':row['ts'].isoformat() if hasattr(row['ts'],'isoformat') else str(row['ts']),
+            'period':row['period'],'by':row['recorded_by'],'source':row['source']
+        })
+        hydrated.append(item)
+    cloned['tempReadings']=hydrated
+    payload={
+        'product':'Command de Cuisine','revision':revision,
+        'exportedAt':datetime.now(timezone.utc).isoformat(),
+        'backupFormat':2,'temperatureSource':'tenant_temperature_readings',
+        'temperatureReadingCount':len(hydrated),'state':cloned
+    }
+    return json.dumps(payload,ensure_ascii=False,indent=2).encode()
 
 def maybe_daily_backup(state,revision):
     if not configured():return None
