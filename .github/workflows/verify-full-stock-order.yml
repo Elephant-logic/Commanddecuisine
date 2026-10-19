@@ -25,6 +25,8 @@ jobs:
           node-version: '22'
       - name: Validate isolated Stock aggregation
         run: node tests/test_order_export.mjs
+      - name: Install YAML reader
+        run: python -m pip install pyyaml
       - name: Rebuild actual production app from ZIP and patches
         run: |
           python - <<'PY'
