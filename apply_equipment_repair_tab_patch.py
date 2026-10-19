@@ -11,11 +11,11 @@ old='[["round","Log round"],["history","History"],["trends","Trends"],["probes",
 new='[["round","Log round"],["history","History"],["trends","Trends"],["repairs","Repairs"],["probes","Probes"]]'
 if s.count(old)!=1:raise SystemExit("Unexpected Temperature navigation shape")
 s=s.replace(old,new,1)
-marker='    if(tempTab==="probes")return tempProbes(v);'
+marker='if(tempTab==="probes")return tempProbes(v);'
 start=s.find(new)
 stop=s.find(marker,start)
-if start<0 or stop<0 or stop-start>1200:raise SystemExit("Cannot locate active Temperature tab switch")
-s=s[:stop]+'    if(tempTab==="repairs")return VIEWS.maintenance(v);'+chr(10)+s[stop:]
+if start<0 or stop<0:raise SystemExit("Cannot locate Temperature tab switch")
+s=s[:stop]+'if(tempTab==="repairs")return VIEWS.maintenance(v);'+chr(10)+'    '+s[stop:]
 # Existing maintenance log allows any staff member to close a repair job.
 # Reporting a fault remains available, completion needs manager confirmation.
 old='row.append(el("button",{class:"btn sm ghost",html:m.status==="closed"?"Reopen":"Close"'
