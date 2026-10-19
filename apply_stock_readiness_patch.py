@@ -7,8 +7,8 @@ def once(old,new,label):
  global s
  if s.count(old)!=1:raise SystemExit(label+" marker count "+str(s.count(old)))
  s=s.replace(old,new,1)
-once('const low=STATE.stock.filter(s=>s.qtyKnown!==false && +s.qty< +s.par);',
- 'const low=STATE.stock.filter(s=>s.qtyKnown===true && +s.par>0 && +s.qty< +s.par);',
+once('VIEWS.stock=function(v){\n  const low=STATE.stock.filter(s=>s.qtyKnown!==false && +s.qty< +s.par);',
+ 'VIEWS.stock=function(v){\n  const low=STATE.stock.filter(s=>s.qtyKnown===true && +s.par>0 && +s.qty< +s.par);',
  'Stock low count')
 once('function stockRow(s){\n  const short=+s.par-+s.qty, lowr=short>0, out=+s.qty<=0;',
  'function stockRow(s){\n  const known=s.qtyKnown===true,step=stockUnitStep(s.unit);\n  const short=known?+s.par-+s.qty:0, lowr=known&&+s.par>0&&short>0, out=known&&+s.qty<=0;',
