@@ -17,3 +17,19 @@ for filename in z.namelist():
    else:spans.append((a,b))
   for a,b in spans[:12]:
    print(f'\n OFFSET {a}-{b}\n'+s[a:b][:14500])
+
+print("\n================ GENERATED APP ================\n")
+for filename in sorted(Path('app').rglob('*.js'))+[Path('app/index.html')]:
+ if not filename.is_file():continue
+ s=filename.read_text(encoding='utf-8',errors='replace')
+ pat=re.compile(r'VIEWS\.timers|VIEWS\[['"]timers|function\s+[A-Za-z0-9_$]*timer[A-Za-z0-9_$]*\s*\(|timerPreset|[Tt]imers|timer.*(?:pause|start|reset|stop|button|click)',re.I)
+ hits=list(pat.finditer(s))
+ if hits:
+  print(f'\n========== {filename} ({len(s)} chars; {len(hits)} matches) =========')
+  spans=[]
+  for match in hits[:30]:
+   a=max(0,match.start()-650);b=min(len(s),match.end()+1600)
+   if spans and a<=spans[-1][1]:spans[-1]=(spans[-1][0],max(spans[-1][1],b))
+   else:spans.append((a,b))
+  for a,b in spans[:8]:
+   print(f'\n OFFSET {a}-{b}\n'+s[a:b][:12000])
