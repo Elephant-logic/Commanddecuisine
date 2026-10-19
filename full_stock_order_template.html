@@ -80,7 +80,7 @@ function render(){
  document.getElementById('empty').hidden=rows.length>0;stats();renderSelected();
 }
 function stats(){var all=validItems(),count=all.filter(function(i){return !!i.ordered}).length;document.getElementById('total').textContent=all.length;document.getElementById('ordered').textContent=count;document.getElementById('remaining').textContent=all.length-count;}
-function safeData(){return JSON.stringify({title:seed.title,created:seed.created,items:validItems()}).replace(/</g,String.fromCharCode(92)+'u003c')}
+function safeData(){return JSON.stringify({title:seed.title,created:seed.created,orderOnly:isOrderOnly,items:validItems()}).replace(/</g,String.fromCharCode(92)+'u003c')}
 function download(content,name,type){var b=new Blob([content],{type:type});var url=URL.createObjectURL(b);var a=node('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url)},2000)}
 document.getElementById('add').addEventListener('submit',function(e){e.preventDefault();var f=new FormData(e.target);var name=String(f.get('name')||'').trim();if(!name)return;items.push({id:'manual_'+Date.now()+'_'+(++next),name:name,category:String(f.get('category')||'Other'),unit:String(f.get('unit')||'each'),supplier:String(f.get('supplier')||''),quantity:'',notes:String(f.get('notes')||''),ordered:isOrderOnly,origin:'Manual',usedIn:[],needsReview:false});e.target.reset();e.target.elements.unit.value='each';search.value='';filter.value='all';render();});
 document.getElementById('save').addEventListener('click',function(){var doc=document.documentElement.cloneNode(true);doc.querySelector('#order-data').textContent=safeData();doc.querySelector('#body').textContent='';doc.querySelector('#search').value='';doc.querySelector('#filter').value='all';download('<!doctype html>\n'+doc.outerHTML,'Command-de-Cuisine-Full-Stock-Edited.html','text/html;charset=utf-8')});
@@ -146,9 +146,11 @@ window.addEventListener('beforeprint',renderPrintSelected);
 if(isOrderOnly){
   document.querySelector('header h1').textContent='Editable ingredient order';
   document.querySelector('header p').textContent='Only selected ingredients • Works offline without the app';
-  document.querySelector('section.panel.noprint').hidden=true;
-  document.querySelector('section.panel.noprint + section.panel.noprint').hidden=true;
-  document.querySelector('#selectedOrderPanel').previousElementSibling.hidden=true;
+  // Hide the full-catalogue controls, but retain Add Item and the editable selected order.
+  var summaryPanel=document.querySelector('main.wrap > section.panel:first-child');
+  var cataloguePanel=document.getElementById('body').closest('section.panel');
+  if(summaryPanel)summaryPanel.hidden=true;
+  if(cataloguePanel)cataloguePanel.hidden=true;
   document.getElementById('selectedEmpty').textContent='Nothing selected in this order.';
   document.getElementById('saveSelected').textContent='Save updated order HTML';
 }
