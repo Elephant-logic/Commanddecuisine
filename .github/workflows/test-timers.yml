@@ -41,5 +41,3 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Test real timer buttons on desktop and mobile
         run: python tests/test_timer_controls.py
-      - name: Inspect production timer UI and event handlers
-        run: python tests/diagnose_timers.py
