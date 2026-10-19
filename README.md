@@ -36,7 +36,7 @@ the [Render Blueprint](render.yaml).
    in support tickets, messages or screenshots.
 3. Start with **Temperatures**, record actual fridge/freezer readings, and
    choose an equipment status with a fault/action note if an appliance is
-   not working. Historical corrections and voids require manager access.
+   not working. Historical corrections and voids require manager access.\n   Use the **Repairs** tab inside Temperatures to enter a separate engineer\n   job in Maintenance; opening this tab never creates a temperature record.
 4. Use **Daily** for opening/closing checks and cleaning tasks.
 5. Under **Recipes**, tap a recipe to review ingredients and allergies.
    **Update from photo / notes** may create unverified drafts, not approved
@@ -44,7 +44,7 @@ the [Render Blueprint](render.yaml).
    ingredient label or supplier specification.
 6. **Stock** is a catalogue until counted quantities, par levels and
    suppliers have been entered. The downloadable ordering sheet is a
-   standalone editable file; it does not submit orders or update stock.
+   standalone editable file; it does not submit orders or update stock.\n   An uncounted item shows **Not counted**, never a made-up stockout. The Stock\n   screen shows how many items have a real counted quantity and supplier.
 7. In **Reports**, distinguish recorded results from missing/unfinished
    checks. Do not use AI-created recipe costs, prices or allergen drafts as
    verified operational values.
