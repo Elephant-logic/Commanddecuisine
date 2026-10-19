@@ -39,7 +39,7 @@ if s.count("  function tempHistory(v){")!=1:raise SystemExit("Cannot uniquely fi
 start=s.index("  function tempHistory(v){")
 rows=s.find("const rows=STATE.tempReadings.slice()",start)
 if rows<0 or rows-start>300:raise SystemExit("Cannot find history row source")
-newline=s.find("\\n",rows)
+newline=s.find(chr(10),rows)
 if newline<0:raise SystemExit("Temperature row declaration has no line ending")
 needle="    if(typeof window"
 extra=mobile[mobile.index(needle):]
