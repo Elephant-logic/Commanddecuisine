@@ -114,8 +114,8 @@ text = text.replace(
     'function stockRow(s){   const known=s.qtyKnown!==false, short=known?(+s.par-+s.qty):0, lowr=known&&short>0, out=known&&+s.qty<=0, step=stockUnitStep(s.unit);'
 )
 text = text.replace(
-    '<div class="muted" style="font-size:11.5px;margin-top:2px"><b style="color:var(--ink)">Actual: \${esc(stockQtyText(s.qty,s.unit))}</b> · Minimum: \${esc(stockQtyText(s.par,s.unit))}\${s.supplier?" · "+esc(s.supplier):""}</div>',
-    '<div class="muted" style="font-size:11.5px;margin-top:2px"><b style="color:var(--ink)">Actual: \${s.qtyKnown===false?"Not counted":esc(stockQtyText(s.qty,s.unit))}</b> · Minimum: \${esc(stockQtyText(s.par,s.unit))}\${s.supplier?" · "+esc(s.supplier):""}</div>'
+    '<div class="muted" style="font-size:11.5px;margin-top:2px"><b style="color:var(--ink)">Actual: ${esc(stockQtyText(s.qty,s.unit))}</b> · Minimum: ${esc(stockQtyText(s.par,s.unit))}${s.supplier?" · "+esc(s.supplier):""}</div>',
+    '<div class="muted" style="font-size:11.5px;margin-top:2px"><b style="color:var(--ink)">Actual: ${s.qtyKnown===false?"Not counted":esc(stockQtyText(s.qty,s.unit))}</b> · Minimum: ${esc(stockQtyText(s.par,s.unit))}${s.supplier?" · "+esc(s.supplier):""}</div>'
 )
 text = text.replace(
     's.qty=Math.max(0,Math.round((+s.qty-step)*100)/100);',
