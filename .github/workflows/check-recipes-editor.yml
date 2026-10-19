@@ -1,4 +1,4 @@
-name: Check Recipes screen layout
+name: Verify unified Recipes editor
 on:
   push:
     branches: [fix/recipes-unified-editor-20261019]
@@ -22,5 +22,29 @@ jobs:
           build=yaml.safe_load(open('render.yaml'))['services'][0]['buildCommand']
           subprocess.run(build,shell=True,executable='/bin/bash',check=True)
           PY
-      - name: Find the existing recipe views and controls
-        run: python tests/inspect_recipes_layout.py
+      - name: Confirm patched Recipes controls and valid scripts
+        run: |
+          python -m py_compile apply_recipes_unified_editor_patch.py
+          node --check app/main_app.js
+          node --check app/recipe_import_patch.js
+          node --check app/allergen_matrix_safety.js
+          python - <<'PY'
+          from pathlib import Path
+          main=Path("app/main_app.js").read_text()
+          index=Path("app/index.html").read_text()
+          import_script=Path("app/recipe_import_patch.js").read_text()
+          assert "Edit ingredients & allergens" in main
+          assert "Update from photo / notes" in main
+          assert "Edit dish details" in main
+          assert "main_app.js?v=20261019-recipes-unified1" in index
+          assert "r.allergenReviewRequired=true" in import_script
+          assert "mergeEditedIngredients" in import_script
+          assert index.count("main_app.js?v=20261019-recipes-unified1")==1
+          print("PASS: Shared Recipes editor installed in complete production build")
+          PY
+      - name: Install Chromium browser tests
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Test recipe editing on desktop and phone screens
+        run: python tests/test_recipes_unified_editor.py
