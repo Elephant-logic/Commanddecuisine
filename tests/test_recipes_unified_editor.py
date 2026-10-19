@@ -178,7 +178,7 @@ def main():
     with tempfile.TemporaryDirectory() as td:
         root=Path(td)
         for file in ("recipe_import_patch.js","allergen_matrix_safety.js"):
-            (root/file).write_bytes((APP/file).read_bytes())
+            (root/file).write_bytes(((Path(".") if file=="recipe_import_patch.js" else APP)/file).read_bytes())
         fixture=SCAFFOLD.replace("__STATE__",json.dumps({"stock":MOCK_STOCK,"recipes":MOCK_RECIPES,"menus":[]}))
         fixture=fixture.replace("__RECIPE_VIEW__",snippet)
         (root/"index.html").write_text(fixture,encoding="utf-8")
