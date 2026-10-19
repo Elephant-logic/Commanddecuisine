@@ -23,6 +23,26 @@ for name in assets:
         server_text = server_text.replace(marker, marker + line, 1)
 server.write_text(server_text, encoding='utf-8')
 
+# Reliable photo-menu imports have an explicit successful-save point. Emit a
+# browser-only signal so the ordering action is contextual immediately afterwards.
+# No extra app-state write and no change to menu or recipe persistence.
+reliable = app / 'reliable_menu_import.js'
+if not reliable.exists():
+    raise SystemExit('Reliable menu importer missing while linking ordering sheet')
+reliable_text = reliable.read_text(encoding='utf-8')
+saved_marker = "setStatus('Saved: '+savedMenu.dishIds.length+' dishes and recipes.');"
+event_marker = "window.dispatchEvent(new CustomEvent('cdc:menu-saved'"
+if event_marker not in reliable_text:
+    if reliable_text.count(saved_marker) != 1:
+        raise SystemExit('Could not locate unique successful menu-save confirmation')
+    signal = (
+        "try{window.dispatchEvent(new CustomEvent('cdc:menu-saved',"
+        "{detail:{menuId:savedMenu.id,name:savedMenu.name}}));}catch(_){ }\n"
+        "        "
+    )
+    reliable_text = reliable_text.replace(saved_marker, signal + saved_marker, 1)
+    reliable.write_text(reliable_text, encoding='utf-8')
+
 html = index.read_text(encoding='utf-8')
 html = re.sub(r'\s*<script[^>]+src=["\']/?full_stock_html_export\.js(?:\?[^"\']*)?["\'][^>]*></script>\s*', '\n', html, flags=re.I)
 tag = '<script src="/full_stock_html_export.js?v=20261019-full-list1"></script>'
