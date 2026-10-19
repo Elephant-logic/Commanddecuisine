@@ -1,0 +1,50 @@
+name: Verify full ordering sheet
+on:
+  push:
+    branches:
+      - feature/complete-stock-html-export-20261019
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate isolated Stock aggregation
+        run: node tests/test_order_export.mjs
+      - name: Rebuild actual production app from ZIP and patches
+        run: |
+          python - <<'PY'
+          import pathlib, subprocess
+          import yaml
+          path=pathlib.Path('render.yaml')
+          config=yaml.safe_load(path.read_text())
+          command=config['services'][0]['buildCommand']
+          print('Running Render build command against isolated checkout; no database or secrets available.')
+          subprocess.run(command,shell=True,check=True,executable='/bin/bash')
+          PY
+      - name: Check built assets and script syntax
+        run: |
+          python tests/verify_stock_export_build.py
+          python -m py_compile apply_full_stock_html_export_patch.py
+          node --check app/full_stock_html_export.js
+          node --check app/reliable_menu_import.js
+      - name: Install browser test tools
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Browser test full catalogue and separate order
+        run: python tests/browser_order_export.py
