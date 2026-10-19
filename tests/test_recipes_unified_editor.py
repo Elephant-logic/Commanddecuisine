@@ -115,7 +115,7 @@ def run_case(browser,base,mobile):
 
     overlay.locator(".cdc-a6-ing").first.click()
     modal=page.locator("#cdc-allergen-v6-overlay")
-    assert "Edit ingredient" in modal.inner_text(), {"overlay":modal.inner_text()[:650],"errors":errors}
+    assert "EDIT INGREDIENT" in modal.inner_text().upper(), {"overlay":modal.inner_text()[:650],"errors":errors}
     qty=modal.locator('label:has-text("Qty") input')
     assert qty.input_value()=="100"
     qty.fill("125")
