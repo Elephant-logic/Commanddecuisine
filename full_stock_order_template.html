@@ -25,6 +25,7 @@
 <main class="wrap"><section class="panel">
 <div class="row noprint" style="justify-content:space-between;gap:12px;margin-bottom:12px"><div><h2 id="sheetTitle">Complete kitchen order sheet</h2><div id="generated" class="small"></div></div><div class="row"><button class="primary" id="save">⬇ Save edited HTML</button><button id="print">Print</button><button id="csv">Export CSV</button></div></div>
 <div class="row"><span class="stat"><b id="total">0</b> total items</span><span class="stat"><b id="ordered">0</b> on order list</span><span class="stat"><b id="remaining">0</b> not selected</span></div>
+<div id="reviewNotice" class="hint noprint" style="display:none;background:#fff7dd;border-left-color:#ce9229"></div>
 <div class="hint noprint">This is the <strong>full list</strong>, not a low-stock report. Order quantities start blank so the person ordering can enter exactly what they want. Changes in this file do not affect the app. Click <strong>Save edited HTML</strong> to keep added, removed or edited items.</div>
 </section>
 <section class="panel noprint"><h2>Add a new item</h2><form id="add" class="formgrid"><label>Item name<input name="name" required placeholder="e.g. Tomatoes"></label><label>Category<input name="category" placeholder="e.g. Veg"></label><label>Unit<input name="unit" value="each" placeholder="kg / packs"></label><label>Supplier<input name="supplier" placeholder="Optional"></label><label>Notes<input name="notes" placeholder="Optional"></label><button class="primary" type="submit">+ Add item</button></form></section>
@@ -80,7 +81,7 @@ function render(){
  document.getElementById('empty').hidden=rows.length>0;stats();renderSelected();
 }
 function stats(){var all=validItems(),count=all.filter(function(i){return !!i.ordered}).length;document.getElementById('total').textContent=all.length;document.getElementById('ordered').textContent=count;document.getElementById('remaining').textContent=all.length-count;}
-function safeData(){return JSON.stringify({title:seed.title,created:seed.created,orderOnly:isOrderOnly,items:validItems()}).replace(/</g,String.fromCharCode(92)+'u003c')}
+function safeData(){return JSON.stringify({title:seed.title,created:seed.created,sourceMenu:seed.sourceMenu,reviewCount:seed.reviewCount,orderOnly:isOrderOnly,items:validItems()}).replace(/</g,String.fromCharCode(92)+'u003c')}
 function download(content,name,type){var b=new Blob([content],{type:type});var url=URL.createObjectURL(b);var a=node('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url)},2000)}
 document.getElementById('add').addEventListener('submit',function(e){e.preventDefault();var f=new FormData(e.target);var name=String(f.get('name')||'').trim();if(!name)return;items.push({id:'manual_'+Date.now()+'_'+(++next),name:name,category:String(f.get('category')||'Other'),unit:String(f.get('unit')||'each'),supplier:String(f.get('supplier')||''),quantity:'',notes:String(f.get('notes')||''),ordered:isOrderOnly,origin:'Manual',usedIn:[],needsReview:false});e.target.reset();e.target.elements.unit.value='each';search.value='';filter.value='all';render();});
 document.getElementById('save').addEventListener('click',function(){var doc=document.documentElement.cloneNode(true);doc.querySelector('#order-data').textContent=safeData();doc.querySelector('#body').textContent='';doc.querySelector('#search').value='';doc.querySelector('#filter').value='all';download('<!doctype html>\n'+doc.outerHTML,'Command-de-Cuisine-Full-Stock-Edited.html','text/html;charset=utf-8')});
@@ -125,7 +126,7 @@ function saveSelectedHtml(){
   var chosen=validItems().filter(function(i){return !!i.ordered});
   if(!chosen.length){alert('Tick at least one ingredient to add it to your order.');return}
   var doc=document.documentElement.cloneNode(true);
-  var saved={title:'Editable ingredient order',created:seed.created,orderOnly:true,items:chosen};
+  var saved={title:'Editable ingredient order',created:seed.created,sourceMenu:seed.sourceMenu,reviewCount:seed.reviewCount,orderOnly:true,items:chosen};
   doc.querySelector('#order-data').textContent=JSON.stringify(saved).replace(/</g,'\\u003c');
   doc.querySelector('#body').replaceChildren();
   doc.querySelector('#selectedBody').replaceChildren();
@@ -155,6 +156,11 @@ if(isOrderOnly){
   document.getElementById('saveSelected').textContent='Save updated order HTML';
 }
 
-document.getElementById('sheetTitle').textContent=seed.title||'Complete kitchen order sheet';document.getElementById('generated').textContent='Created '+new Date(seed.created||Date.now()).toLocaleString();render();
+if(Number(seed.reviewCount)>0){
+  var notice=document.getElementById('reviewNotice');
+  notice.style.display='';
+  notice.textContent=seed.reviewCount+' recipe(s) are still marked for review in Command de Cuisine. Check ingredients and purchasing units against actual kitchen recipes and supplier products.';
+}
+document.getElementById('sheetTitle').textContent=seed.title||'Complete kitchen order sheet';document.getElementById('generated').textContent='Created '+new Date(seed.created||Date.now()).toLocaleString()+(seed.sourceMenu?' · Saved menu: '+seed.sourceMenu:'');render();
 })();
 </script></body></html>
