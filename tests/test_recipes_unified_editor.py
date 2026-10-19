@@ -43,6 +43,7 @@ SCAFFOLD="""<!doctype html><html><head>
 </style></head><body><main id="view"></main>
 <script>
 const STATE=__STATE__;
+const ME={username:'chef',name:'Chef',role:'manager'};
 let VIEWS={};
 window.__calls=[];
 window.__saves=[];
