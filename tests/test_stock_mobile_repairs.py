@@ -63,7 +63,7 @@ function tempRecordStatusLabel(r){return r.equipmentStatus==='awaiting_repair'?'
 function fmtDate(ts){return String(ts).slice(0,10)}
 function fmtTime(ts){return String(ts).slice(11,16)}
 function save(){saves++}
-function rerender(){}
+function rerender(){const v=document.getElementById('host');if(!v)return;v.replaceChildren();if(window.currentView==='stock')VIEWS.stock(v);else if(window.currentView==='temps')VIEWS.temps(v);else if(window.currentView==='maintenance')VIEWS.maintenance(v);}
 function toast(){}
 function isMgr(){return ME.role==='manager'}
 function uid(p){return p+'_test_'+Math.random().toString(36).slice(2)}
@@ -110,7 +110,7 @@ def run(browser,url,mobile):
     errors=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto(url)
-    page.evaluate("VIEWS.stock(document.getElementById('host'))")
+    page.evaluate("window.currentView='stock';VIEWS.stock(document.getElementById('host'))")
     host=page.locator("#host")
     assert "Stock catalogue readiness" in host.inner_text()
     assert "Counted 1/3" in host.inner_text()
@@ -138,7 +138,7 @@ def run(browser,url,mobile):
     else:
         assert host.locator("#desktop-temp-sheet").count()==1
     before=page.evaluate("JSON.stringify(STATE.tempReadings)")
-    page.evaluate("document.getElementById('host').replaceChildren();tempTab='round';VIEWS.temps(document.getElementById('host'))")
+    page.evaluate("window.currentView='temps';document.getElementById('host').replaceChildren();tempTab='round';VIEWS.temps(document.getElementById('host'))")
     assert host.get_by_role("button",name="Repairs").count()==1
     host.get_by_role("button",name="Repairs").click()
     assert "Report an issue" in host.inner_text()
@@ -155,7 +155,7 @@ def run(browser,url,mobile):
     assert latest["item"]=="Fridge 2" and latest["status"]=="open"
     assert latest["action"]=="Engineer awaited"
     assert page.evaluate("JSON.stringify(STATE.tempReadings)")==before
-    page.evaluate("document.getElementById('host').replaceChildren();VIEWS.maintenance(document.getElementById('host'))")
+    page.evaluate("window.currentView='maintenance';document.getElementById('host').replaceChildren();VIEWS.maintenance(document.getElementById('host'))")
     assert host.get_by_role("button",name="Close",exact=True).count()==1
 
     # Staff can report faults, but only managers close tickets.
