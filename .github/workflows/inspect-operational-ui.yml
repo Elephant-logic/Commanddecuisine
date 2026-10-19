@@ -1,4 +1,4 @@
-name: Inspect kitchen operational layouts
+name: Stock, mobile history and Repairs regression
 on:
   push:
     branches: [feature/kitchen-operations-ux-20261020]
@@ -23,5 +23,24 @@ jobs:
           build=yaml.safe_load(Path('render.yaml').read_text())['services'][0]['buildCommand']
           subprocess.run(build,shell=True,executable='/bin/bash',check=True)
           PY
-      - name: Inspect operation entry points
-        run: python tests/inspect_operational_ui.py
+      - name: Verify compiled app and UX patch markers
+        run: |
+          python -m py_compile apply_stock_readiness_patch.py apply_mobile_temperature_history_patch.py apply_equipment_repair_tab_patch.py
+          node --check app/main_app.js
+          python - <<'PY'
+          from pathlib import Path
+          s=Path("app/main_app.js").read_text()
+          h=Path("app/index.html").read_text()
+          assert "const known=s.qtyKnown===true,step=stockUnitStep(s.unit)" in s
+          assert 'Stock catalogue readiness' in s
+          assert 'cdc-mobile-temp-history' in s
+          assert 'if(tempTab==="repairs")return VIEWS.maintenance(v);' in s
+          assert 'main_app.js?v=20261020-stock-mobile-repairs1' in h
+          print('PASS: stock, mobile history and maintenance view installed in full production build')
+          PY
+      - name: Install Chromium for UI tests
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Test stock, phone histories and repairs without live writes
+        run: python tests/test_stock_mobile_repairs.py
