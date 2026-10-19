@@ -22,7 +22,7 @@ print("\n================ GENERATED APP ================\n")
 for filename in sorted(Path('app').rglob('*.js'))+[Path('app/index.html')]:
  if not filename.is_file():continue
  s=filename.read_text(encoding='utf-8',errors='replace')
- pat=re.compile(r'VIEWS\.timers|VIEWS\[['"]timers|function\s+[A-Za-z0-9_$]*timer[A-Za-z0-9_$]*\s*\(|timerPreset|[Tt]imers|timer.*(?:pause|start|reset|stop|button|click)',re.I)
+ pat=re.compile(r'VIEWS\.timers|VIEWS\[.timers|function\s+[A-Za-z0-9_$]*timer[A-Za-z0-9_$]*\s*\(|timerPreset|[Tt]imers|timer.*(?:pause|start|reset|stop|button|click)',re.I)
  hits=list(pat.finditer(s))
  if hits:
   print(f'\n========== {filename} ({len(s)} chars; {len(hits)} matches) =========')
