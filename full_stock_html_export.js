@@ -4,47 +4,110 @@
   if(window.__cdcFullStockExportReady)return;
   window.__cdcFullStockExportReady=true;
   function val(x){return x==null?'':String(x).trim()}
-  function norm(x){return val(x).toLowerCase().replace(/\s+/g,' ')}
+  function valNorm(x){
+    return val(x).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+      .replace(/[^a-z0-9]+/g,' ').trim();
+  }
+  const ALIASES={
+    'chili powder':'chilli powder',
+    'mozzarella cheese':'mozzarella',
+    'parmesan cheese':'parmesan',
+    'tomato paste':'tomato puree',
+    'fresh parsley':'parsley',
+    'cilantro':'fresh coriander',
+    'nacho chips':'tortilla chips',
+    'plain yoghurt':'natural yoghurt',
+    'salt to taste':'salt',
+    'ginger':'fresh ginger',
+    'tomato slices':'tomatoes'
+  };
+  const PREFERRED={
+    'chilli powder':'Chilli powder',
+    'fresh coriander':'Fresh coriander',
+    'fresh ginger':'Fresh ginger',
+    'natural yoghurt':'Natural yoghurt',
+    'tomato puree':'Tomato purée',
+    'tomatoes':'Tomatoes',
+    'tortilla chips':'Tortilla chips',
+    'parsley':'Parsley'
+  };
+  function norm(x){const n=valNorm(x);return ALIASES[n]||n}
   function array(x){return Array.isArray(x)?x:[]}
+  function appendNote(row,msg){
+    if(!msg || row.notes.includes(msg))return;
+    row.notes+=(row.notes?'; ':'')+msg;
+  }
   function fullList(){
     if(typeof STATE==='undefined')throw new Error('Kitchen data has not loaded.');
-    var all=[],byId=new Map(),byName=new Map(),unlinked=new Map(),seq=0;
+    var all=[],byId=new Map(),byName=new Map(),seq=0;
     array(STATE.stock).forEach(function(s){
       if(!s)return;
-      var name=val(s.item||s.name);
-      if(!name)return;
-      var row={id:'stock_'+(++seq),name:name,category:val(s.cat||s.category)||'Other',
-        unit:val(s.unit)||'each',supplier:val(s.supplier),quantity:'',ordered:false,
-        notes:'',origin:'Stock catalogue',usedIn:[],needsReview:false};
-      all.push(row);
+      var name=val(s.item||s.name), key=norm(name);
+      if(!key)return;
+      // This is a recipe instruction, not a separate purchasable item.
+      // Salt and black pepper have their own independent catalogue lines.
+      if(key==='salt and black pepper to taste')return;
+      var row=byName.get(key);
+      if(!row){
+        row={id:'stock_'+(++seq),name:PREFERRED[key]||name,
+          category:val(s.cat||s.category)||'Other',
+          unit:val(s.unit)||'each',supplier:val(s.supplier),quantity:'',ordered:false,
+          notes:'',origin:'Stock catalogue',usedIn:[],needsReview:false};
+        all.push(row);byName.set(key,row);
+      }else{
+        if(val(s.unit) && val(s.unit)!==row.unit){
+          row.needsReview=true;appendNote(row,'Confirm unit; another catalogue entry uses '+val(s.unit));
+        }
+        if(val(s.supplier) && val(s.supplier)!==row.supplier){
+          row.needsReview=true;appendNote(row,'Other supplier: '+val(s.supplier));
+        }
+        if(name.toLowerCase()!==row.name.toLowerCase())
+          appendNote(row,'Also listed as: '+name);
+      }
       if(s.id!=null)byId.set(String(s.id),row);
-      var n=norm(name);
-      if(!byName.has(n))byName.set(n,[]);
-      byName.get(n).push(row);
     });
+    var salt=byName.get('salt'),pepper=byName.get('black pepper');
+    if(salt)appendNote(salt,'Also used in “Salt and black pepper, to taste”');
+    if(pepper)appendNote(pepper,'Also used in “Salt and black pepper, to taste”');
     array(STATE.recipes).forEach(function(recipe){
       if(!recipe)return;
       var dish=val(recipe.name)||'Unnamed recipe';
       array(recipe.ingredients).forEach(function(ingredient){
         if(!ingredient)return;
-        var name=val(ingredient.name||ingredient.item);
-        if(!name)return;
-        var unit=val(ingredient.unit)||'each';
-        var matches=byName.get(norm(name))||[];
-        var explicit=ingredient.stockId==null?null:byId.get(String(ingredient.stockId));
-        // The name is only used to avoid duplicate listing; no links/data are written.
-        var existing=explicit||(matches.length===1?matches[0]:null);
-        if(existing){if(!existing.usedIn.includes(dish))existing.usedIn.push(dish);return}
-        var key=norm(name)+'|'+norm(unit);
-        var row=unlinked.get(key);
-        if(!row){
-          row={id:'recipe_'+(++seq),name:name,category:'Recipe ingredient',unit:unit,
-            supplier:'',quantity:'',ordered:false,notes:'',origin:'Recipe ingredient',
-            usedIn:[],needsReview:matches.length>1};
-          unlinked.set(key,row);all.push(row);
+        var name=val(ingredient.name||ingredient.item),key=norm(name);
+        if(!key)return;
+        if(key==='salt and black pepper to taste'){
+          [salt,pepper].forEach(function(row){
+            if(row&&!row.usedIn.includes(dish))row.usedIn.push(dish);
+          });
+          return;
         }
-        if(!row.usedIn.includes(dish))row.usedIn.push(dish);
+        var unit=val(ingredient.unit)||'each';
+        var explicit=ingredient.stockId==null?null:byId.get(String(ingredient.stockId));
+        var existing=explicit||byName.get(key);
+        if(existing){
+          if(!existing.usedIn.includes(dish))existing.usedIn.push(dish);
+          return;
+        }
+        var row={id:'recipe_'+(++seq),name:PREFERRED[key]||name,
+          category:'Recipe ingredient',unit:unit,
+          supplier:'',quantity:'',ordered:false,notes:'',
+          origin:'Recipe ingredient',usedIn:[dish],needsReview:false};
+        all.push(row);byName.set(key,row);
       });
+    });
+    // Review alternatives instead of quietly choosing a product on behalf of the kitchen.
+    all.forEach(function(row){
+      if(/\sor\s/i.test(row.name)){
+        row.needsReview=true;appendNote(row,'Choose which of the recipe alternatives to order');
+      }
+      var k=norm(row.name);
+      if(k==='tomato puree'){
+        row.needsReview=true;appendNote(row,'Confirm tomato paste and purée are interchangeable for the supplier');
+      }
+      if(k==='tortilla chips'){
+        row.needsReview=true;appendNote(row,'Confirm nacho chips and tortilla chips are the same product');
+      }
     });
     return all.sort(function(a,b){return a.category.localeCompare(b.category)||a.name.localeCompare(b.name)});
   }
