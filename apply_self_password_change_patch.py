@@ -1339,14 +1339,14 @@ for quoted in ("'allergen_matrix_safety.js'", '"allergen_matrix_safety.js"'):
     body = body.replace(quoted + ",\n", "")
 body = body.rstrip() + ",\n    'allergen_matrix_safety.js'"
 rt = rt[:m.start(2)] + body + rt[m.end(2):]
-rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261014-allergenv7', rt)
+rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261019-allergenv8', rt)
 runtime_loader.write_text(rt, encoding='utf-8')
 
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard_path = app / guard_name
     if guard_path.exists():
         gt = guard_path.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261014-allergenv7', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261019-allergenv8', gt)
         guard_path.write_text(gt, encoding='utf-8')
 
 srv_check = server.read_text(encoding='utf-8')
@@ -1356,7 +1356,7 @@ if srv_check.count("'/allergen_matrix_safety.js'") + srv_check.count('"/allergen
 if rt_check.count("'allergen_matrix_safety.js'") + rt_check.count('"allergen_matrix_safety.js"') != 1:
     raise SystemExit('Allergen matrix safety module not installed exactly once')
 allergen_js_check = allergen_safe_target.read_text(encoding='utf-8')
-if 'stable allergen workspace v6 active' not in allergen_js_check or 'Save ingredient' not in allergen_js_check or 'View-only matrix.' not in allergen_js_check:
+if 'stable allergen workspace v7 active' not in allergen_js_check or 'Save ingredient' not in allergen_js_check or 'View-only matrix.' not in allergen_js_check:
     raise SystemExit('Safe ingredient allergen workspace markers missing from final runtime')
 print('Allergen matrix replaced with stable read-only view; dish ingredients edit allergens explicitly and update the recipe summary')
 
@@ -1383,7 +1383,7 @@ server.write_text(srv, encoding='utf-8')
 index = app / 'index.html'
 ah = index.read_text(encoding='utf-8')
 ah = re.sub(r'\s*<script[^>]+src=["\']/?allergen_matrix_safety\.js(?:\?[^"\']*)?["\'][^>]*></script>\s*', '\n', ah, flags=re.I)
-allergen_direct_tag = '<script src="/allergen_matrix_safety.js?v=20261014-allergenv7"></script>'
+allergen_direct_tag = '<script src="/allergen_matrix_safety.js?v=20261019-allergenv8"></script>'
 if '</body>' not in ah:
     raise SystemExit('Could not locate </body> for final allergen workspace')
 ah = ah.replace('</body>', allergen_direct_tag + '\n</body>', 1)
@@ -1391,20 +1391,20 @@ index.write_text(ah, encoding='utf-8')
 
 if runtime_loader.exists():
     rt = runtime_loader.read_text(encoding='utf-8')
-    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261014-allergenv7', rt)
+    rt = re.sub(r"\?runtime=[^'\"]+", '?runtime=20261019-allergenv8', rt)
     runtime_loader.write_text(rt, encoding='utf-8')
 for guard_name in ('temperature_reset_guard.js','runtime_guard.js'):
     guard_path = app / guard_name
     if guard_path.exists():
         gt = guard_path.read_text(encoding='utf-8')
-        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261014-allergenv7', gt)
+        gt = re.sub(r"runtime_loader\.js\?v=[^'\"]+", 'runtime_loader.js?v=20261019-allergenv8', gt)
         guard_path.write_text(gt, encoding='utf-8')
 
 final_ah = index.read_text(encoding='utf-8')
 final_ajs = allergen_safe_target.read_text(encoding='utf-8')
 if final_ah.count(allergen_direct_tag) != 1:
     raise SystemExit('Direct allergen workspace tag not installed exactly once')
-if 'setInterval(function(){' not in final_ajs or '__cdcSafeAllergenView' not in final_ajs:
+if 'setInterval(function(){' not in final_ajs or '__cdcSafeAllergenView' not in final_ajs or '__cdcAllergenWorkspaceV7' not in final_ajs:
     raise SystemExit('Allergen workspace late-override protection missing')
 if 'ingredientConfirmed' not in final_ajs or 'Draft / check:' not in final_ajs:
     raise SystemExit('Allergen confirmed/draft distinction missing')
@@ -1413,4 +1413,4 @@ if '📷 Update from photo / notes' not in final_ajs:
 _final_recipe_import = (Path('recipe_import_patch.js')).read_text(encoding='utf-8')
 if 'window.CDCRecipeImporter' not in _final_recipe_import or 'openImporter(targetRecipeId)' not in _final_recipe_import:
     raise SystemExit('Recipe photo / notes importer is not exposed for existing recipes')
-print('Allergen workspace forced last: read-only matrix, sticky labels, dish-to-ingredient editor, allergen confirmation and photo/notes recipe update')
+print('Allergen workspace v7 forced last: read-only matrix, sticky labels, dish-to-ingredient editor and mobile-safe route repair')
