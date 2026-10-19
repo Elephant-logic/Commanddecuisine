@@ -1,0 +1,22 @@
+name: Verify deployed timer controls
+on:
+  push:
+    branches: [main]
+    paths:
+      - apply_timer_controls_fix.py
+      - render.yaml
+      - tests/verify_live_timer_controls.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Read-only check of Render health and fixed timer script
+        run: python tests/verify_live_timer_controls.py
