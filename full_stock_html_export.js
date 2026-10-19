@@ -26,6 +26,8 @@
     'fresh coriander':'Fresh coriander',
     'fresh ginger':'Fresh ginger',
     'natural yoghurt':'Natural yoghurt',
+    'mozzarella':'Mozzarella',
+    'parmesan':'Parmesan',
     'tomato puree':'Tomato purée',
     'tomatoes':'Tomatoes',
     'tortilla chips':'Tortilla chips',
