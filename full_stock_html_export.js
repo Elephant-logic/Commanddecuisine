@@ -33,6 +33,17 @@
   };
   function norm(x){const n=valNorm(x);return ALIASES[n]||n}
   function array(x){return Array.isArray(x)?x:[]}
+  var justSavedMenu='';
+  function reviewCount(){
+    return array(STATE.recipes).filter(function(r){return r&&(r.needsReview===true||r.needsVerification===true||r.importIncomplete===true)}).length;
+  }
+  window.addEventListener('cdc:menu-saved',function(e){
+    var detail=e&&e.detail||{};
+    justSavedMenu=val(detail.name)||'Your menu';
+    document.querySelectorAll('.cdc-full-stock-export .cdc-stock-explainer').forEach(function(h){
+      h.textContent=justSavedMenu+' saved. Download the complete ingredient catalogue below.';
+    });
+  });
   function appendNote(row,msg){
     if(!msg || row.notes.includes(msg))return;
     row.notes+=(row.notes?'; ':'')+msg;
@@ -114,13 +125,15 @@
   async function exportHtml(){
     try{
       var items=fullList();
+      var flaggedRecipes=reviewCount();
       if(!items.length){alert('No Stock catalogue or saved recipe ingredients found. Save your imported menu/recipes first.');return}
       var response=await fetch('/full_stock_order_template.html?v=20261019-full1',{credentials:'same-origin'});
       if(!response.ok)throw new Error('Stock order template is unavailable');
       var template=await response.text();
       var regex=/(<script type="application\/json" id="order-data">)[\s\S]*?(<\/script>)/;
       if(!regex.test(template))throw new Error('Stock order template is invalid');
-      var data=JSON.stringify({title:'Complete Kitchen Stock List',created:new Date().toISOString(),items:items})
+      var data=JSON.stringify({title:'Complete Kitchen Stock List',created:new Date().toISOString(),
+        sourceMenu:justSavedMenu||'',reviewCount:flaggedRecipes,items:items})
         .replace(/</g,'\\u003c');
       var html=template.replace(regex,function(match,open,close){return open+data+close});
       var blob=new Blob([html],{type:'text/html;charset=utf-8'});
@@ -137,10 +150,13 @@
     box.style.cssText='display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:13px;margin:0 0 14px;border:1px solid var(--line,#ddd);border-radius:12px;background:var(--card,#fff)';
     var copy=document.createElement('div');copy.style.cssText='flex:1;min-width:195px';
     var h=document.createElement('strong');h.textContent='Download the FULL Stock list';
-    var p=document.createElement('div');p.textContent='Every catalogue item plus every saved recipe ingredient, even when already in Stock. Edit, add and remove items offline.';
+    var p=document.createElement('div');p.className='cdc-stock-explainer';
+    p.textContent=justSavedMenu
+      ?justSavedMenu+' saved. Download the complete ingredient catalogue below.'
+      :'Includes EVERY Stock ingredient, regardless of counts. Tick items to create a separate editable order.';
     p.style.cssText='font-size:12px;opacity:.75;margin-top:4px';copy.append(h,p);
     var b=document.createElement('button');b.type='button';b.className='btn primary';
-    b.textContent='Download full editable HTML';b.addEventListener('click',exportHtml);
+    b.textContent='Download full ordering sheet';b.addEventListener('click',exportHtml);
     box.append(copy,b);view.prepend(box);
   }
   function install(){
