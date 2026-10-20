@@ -5,14 +5,17 @@ from urllib.request import Request,urlopen
 HOST="https://command-de-cuisine.onrender.com"
 CHECKS=(
     ("/api/health",None),
-    ("/","main_app.js?v=20261020-stock-mobile-repairs1"),
-    ("/main_app.js?v=20261020-kitchen-safety1","const isNew=!r, original=r;"),
-    ("/main_app.js?v=20261020-stock-mobile-repairs1",
+    ("/","main_app.js?v=20261020-dual-delivery-temp1"),
+    ("/main_app.js?v=20261020-dual-delivery-temp1","const isNew=!r, original=r;"),
+    ("/main_app.js?v=20261020-dual-delivery-temp1",
      "const known=s.qtyKnown===true,step=stockUnitStep(s.unit)"),
-    ("/main_app.js?v=20261020-stock-mobile-repairs1",
+    ("/main_app.js?v=20261020-dual-delivery-temp1",
      "cdc-mobile-temp-history"),
-    ("/main_app.js?v=20261020-stock-mobile-repairs1",
+    ("/main_app.js?v=20261020-dual-delivery-temp1",
      'if(tempTab==="repairs")return VIEWS.maintenance(v);'),
+    ("/main_app.js?v=20261020-dual-delivery-temp1","cdc-delivery-chilled"),
+    ("/main_app.js?v=20261020-dual-delivery-temp1","cdc-delivery-frozen"),
+    ("/main_app.js?v=20261020-dual-delivery-temp1","function cdcSupplierNames(){"),
     ("/allergen_matrix_safety.js?v=20261020-kitchen-safety1",
      "Only a manager can edit and verify ingredient allergens.")
 )
