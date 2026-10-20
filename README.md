@@ -37,15 +37,25 @@ the [Render Blueprint](render.yaml).
 3. Start with **Temperatures**, record actual fridge/freezer readings, and
    choose an equipment status with a fault/action note if an appliance is
    not working. Historical corrections and voids require manager access.\n   Use the **Repairs** tab inside Temperatures to enter a separate engineer\n   job in Maintenance; opening this tab never creates a temperature record.
-4. Use **Daily** for opening/closing checks and cleaning tasks.
-5. Under **Recipes**, tap a recipe to review ingredients and allergies.
+4. In **Deliveries**, choose a supplier or tap **Add supplier** and enter the
+   company name. This adds the name to the goods-in dropdown and creates a
+   supplier entry in **More → Contacts**. Contacts is where you add telephone
+   numbers, email and supplier account details. You can also open **Stock**,
+   tap an ingredient, and assign its **Supplier** there.
+   The **Chilled temperature (°C)** and **Frozen temperature (°C)** boxes record
+   separate actual arrival temperatures for the same delivery. Leave a box
+   blank when that delivery did not include that type of food. Older records
+   with only one temperature stay labelled as a previous reading whose product
+   type was unspecified.
+5. Use **Daily** for opening/closing checks and cleaning tasks.
+6. Under **Recipes**, tap a recipe to review ingredients and allergies.
    **Update from photo / notes** may create unverified drafts, not approved
    allergen declarations. A manager must confirm allergens using the actual
    ingredient label or supplier specification.
-6. **Stock** is a catalogue until counted quantities, par levels and
+7. **Stock** is a catalogue until counted quantities, par levels and
    suppliers have been entered. The downloadable ordering sheet is a
    standalone editable file; it does not submit orders or update stock.\n   An uncounted item shows **Not counted**, never a made-up stockout. The Stock\n   screen shows how many items have a real counted quantity and supplier.
-7. In **Reports**, distinguish recorded results from missing/unfinished
+8. In **Reports**, distinguish recorded results from missing/unfinished
    checks. Do not use AI-created recipe costs, prices or allergen drafts as
    verified operational values.
 
