@@ -21,7 +21,7 @@ INITIAL={
     "deliveries":[{"id":"old1","ts":"2026-10-10T10:00:00Z","supplier":"Older supplier",
                    "temp":2.8,"status":"accepted","items":[],"note":""}]
 }
-HTML='''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+HTML='''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{font:16px system-ui;background:#141924;color:white;padding:10px}
 .card{background:#202833;padding:12px;margin-bottom:10px;border:1px solid #506071;border-radius:10px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
