@@ -1,26 +1,40 @@
-"""Read-only inspect delivery/supplier entry points from the assembled release."""
+"""Inspect exact supplier editor and nav entries in assembled release (read-only)."""
 from pathlib import Path
 import re
-files=("app/main_app.js","app/index.html","app/operations_upgrade.js","app/contacts_directory.js")
-terms=[
- "VIEWS.deliveries=function(v){","VIEWS.suppliers=function(v){",
- "VIEWS.contacts=function(v){","VIEWS.delivery=function(v){",
- "function editDelivery(","function editSupplier(","function editStock(",
- "VIEWS.stock=function(v){", "STATE.suppliers",
- "chilledTemp","frozenTemp","frozenTemperature",
- "chilledTemperature","deliveryTemp","temperature",
- "supplier","contact","Receiving"
+p=Path("app/main_app.js")
+text=p.read_text(encoding="utf-8")
+patterns=[
+ "VIEWS.settings=function(v){",
+ "VIEWS.deliveries=function(v){",
+ "STATE.suppliers.forEach",
+ "STATE.suppliers.map",
+ "function openContacts(",
+ "contacts_directory.js",
+ 'title:"Suppliers"',
+ 'label:"Suppliers"',
+ 'Suppliers', 'Contact directory', 'Contacts & important numbers',
+ "function renderSuppliers",
+ "function suppliers",
+ "function supplier",
+ 'VIEWS.suppliers',
+ 'showSuppliers',
+ 'VIEWS.contacts',
+ 'state.suppliers',
+ 'STATE.contacts',
 ]
-for name in files:
- p=Path(name)
- if not p.exists():continue
- s=p.read_text(encoding="utf-8")
- print("SOURCE",name,"SIZE",len(s))
- for t in terms:
-  indices=[m.start() for m in re.finditer(re.escape(t),s,re.IGNORECASE)]
-  if not indices:continue
-  print("  TERM",t,"MATCHES",len(indices))
-  for ix in indices[:4 if t in ("supplier","contact","temperature") else 7]:
-   lo=max(0,ix-280);hi=min(len(s),ix+(4200 if t.startswith(("VIEWS.","function edit")) else 500))
-   text=s[lo:hi].replace("\n","\\n")
-   print("  OFFSET",ix,"SNIPPET",text)
+for pat in patterns:
+ ms=list(re.finditer(re.escape(pat),text,re.I))
+ if not ms:continue
+ print("TERM",pat,"COUNT",len(ms))
+ for m in ms[:5]:
+  a=max(0,m.start()-600);b=min(len(text),m.end()+(2500 if "suppliers" in pat.lower() or pat.startswith("VIEWS.") else 800))
+  print("AT",m.start(),repr(text[a:b]))
+print("CONTACT DIRECTORY")
+p=Path("app/contacts_directory.js")
+text=p.read_text(encoding="utf-8")
+for pat in ['function install(', 'function open(', 'function openDirectory(', 'Add contact',
+            'Add supplier','Contacts','More','VIEWS.', 'window.CDCContacts']:
+ ms=list(re.finditer(re.escape(pat),text,re.I))
+ print("TERM",pat,"COUNT",len(ms))
+ for m in ms[:2]:
+  print("AT",m.start(),repr(text[max(0,m.start()-200):m.end()+800]))
