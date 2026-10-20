@@ -36,7 +36,9 @@ the [Render Blueprint](render.yaml).
    in support tickets, messages or screenshots.
 3. Start with **Temperatures**, record actual fridge/freezer readings, and
    choose an equipment status with a fault/action note if an appliance is
-   not working. Historical corrections and voids require manager access.\n   Use the **Repairs** tab inside Temperatures to enter a separate engineer\n   job in Maintenance; opening this tab never creates a temperature record.
+   not working. Historical corrections and voids require manager access.
+   Use the **Repairs** tab inside Temperatures to enter a separate engineer
+   job in Maintenance; opening this tab never creates a temperature record.
 4. In **Deliveries**, choose a supplier or tap **Add supplier** and enter the
    company name. This adds the name to the goods-in dropdown and creates a
    supplier entry in **More → Contacts**. Contacts is where you add telephone
@@ -54,7 +56,9 @@ the [Render Blueprint](render.yaml).
    ingredient label or supplier specification.
 7. **Stock** is a catalogue until counted quantities, par levels and
    suppliers have been entered. The downloadable ordering sheet is a
-   standalone editable file; it does not submit orders or update stock.\n   An uncounted item shows **Not counted**, never a made-up stockout. The Stock\n   screen shows how many items have a real counted quantity and supplier.
+   standalone editable file; it does not submit orders or update stock.
+   An uncounted item shows **Not counted**, never a made-up stockout. The Stock
+   screen shows how many items have a real counted quantity and supplier.
 8. In **Reports**, distinguish recorded results from missing/unfinished
    checks. Do not use AI-created recipe costs, prices or allergen drafts as
    verified operational values.
