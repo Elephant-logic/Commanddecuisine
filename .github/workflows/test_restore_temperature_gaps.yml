@@ -1,0 +1,36 @@
+name: Restore original temperature gaps - regression
+on:
+  push:
+    branches: [fix/missed-temperature-rounds-20261101]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Assemble full production app
+        run: |
+          python -m pip install pyyaml
+          python - <<'PY'
+          import yaml,subprocess
+          from pathlib import Path
+          build=yaml.safe_load(Path('render.yaml').read_text())['services'][0]['buildCommand']
+          subprocess.run(build,shell=True,executable='/bin/bash',check=True)
+          PY
+      - name: Syntax check original scripts and patch
+        run: |
+          python -m py_compile app/server.py apply_restore_temp_gap_file_route.py
+          node --check app/temperature_gap_fill.js
+          node --check app/kitchen_fixes_20260810.js
+      - name: Install headless Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Verify original gap reminders and backfill button on desktop and mobile
+        run: python tests/test_restore_original_temperature_gaps.py
